@@ -6,7 +6,7 @@ An Obsidian plugin that provides rich visual highlighting for files and folders 
 
 - **Custom colors for files/folders**: Right-click any file or folder → "Color options" to assign a named color combination. Font and background colors are each optional — leave either unset to keep the Obsidian default.
 - **Parent hierarchy highlighting**: Automatically highlights all ancestor folders of the currently active file. Toggle on/off via settings or command palette.
-- **Regex-based highlighting**: Define regex patterns with associated colors that apply to matching file/folder names. Supports targeting files, folders, or both.
+- **Regex-based highlighting**: Define regex patterns with associated colors that apply to matching file/folder names. Supports targeting files, folders, or both. File patterns match against the **basename** (no extension), so `\bDev$` matches `MyNoteDev.md` — write patterns as if the `.md` isn't there.
 - **YAML frontmatter rules**: Apply colors to files based on a specific key/value in their frontmatter (e.g. `status: Refine`). Updates live as you edit files. Files only — folders have no frontmatter.
 - **Conditional highlighting**: Highlight the file with the highest or lowest numeric value in folders matching a name pattern. Example: automatically highlight the latest `UpdateNN.md` file across all `Updates` folders.
 
@@ -14,7 +14,7 @@ An Obsidian plugin that provides rich visual highlighting for files and folders 
 
 - Define unlimited named color combinations (font + background; each color is optional)
 - Hierarchy color pickers with optional override (leave unset for Obsidian default)
-- Regex rules with live validation (invalid patterns shown in red)
+- Regex rules with live validation (invalid patterns shown in red); file patterns match the basename — no need to account for the `.md` extension
 - YAML rules: key + exact value (case-sensitive trim match)
 - Conditional rules: folder name regex + file name regex with numeric capture group + max/min condition
 
@@ -35,7 +35,7 @@ When multiple rules match the same file/folder, later rules win:
 
 ## Version
 
-1.2.1
+1.2.2
 
 ## License
 
