@@ -201,11 +201,9 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 
     // 3. Conditional rules — select max/min file in matching folders
     for (const rule of this.settings.conditionalRules) {
-      if (!rule.folderPattern || !rule.filePattern || !rule.comboId) continue;
-      const combo = this.settings.colorCombos.find(c => c.id === rule.comboId);
-      if (!combo) continue;
-      const comboProps = colorProps(combo.fontColor, combo.bgColor);
-      if (!comboProps) continue;
+      if (!rule.folderPattern || !rule.filePattern) continue;
+      const condProps = colorProps(rule.fontColor, rule.bgColor);
+      if (!condProps) continue;
       let folderRe: RegExp, fileRe: RegExp;
       try { folderRe = new RegExp(rule.folderPattern); } catch { continue; }
       try { fileRe = new RegExp(rule.filePattern); } catch { continue; }
@@ -225,7 +223,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
         const winner = candidates.reduce((best, cur) =>
           rule.condition === 'max' ? (cur.value > best.value ? cur : best) : (cur.value < best.value ? cur : best)
         );
-        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${comboProps}}\n`;
+        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${condProps}}\n`;
       }
     }
 

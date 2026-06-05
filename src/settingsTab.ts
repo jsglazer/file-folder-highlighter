@@ -135,9 +135,9 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .addButton(btn =>
         btn.setButtonText('Add conditional rule').setCta().onClick(async () => {
-          const firstComboId = this.plugin.settings.colorCombos[0]?.id ?? '';
           this.plugin.settings.conditionalRules.push({
-            id: genId(), name: 'New rule', comboId: firstComboId,
+            id: genId(), name: 'New rule',
+            fontColor: '#ffffff', bgColor: '#9b59b6',
             folderPattern: '', filePattern: '', condition: 'max',
           });
           await this.plugin.saveSettings();
@@ -368,7 +368,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         this.plugin.updateStyles();
       });
 
-      // Row 2: patterns + condition + combo
+      // Row 2: patterns + condition + colors
       const row2 = group.createDiv('hh-row');
 
       const folderInput = row2.createEl('input', { cls: 'hh-input hh-pattern-input', placeholder: 'Folder name regex' });
@@ -406,18 +406,14 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         this.plugin.updateStyles();
       });
 
-      const comboSelect = row2.createEl('select', { cls: 'hh-select hh-combo-select' });
-      const noOpt = comboSelect.createEl('option');
-      noOpt.value = '';
-      noOpt.textContent = '— select combo —';
-      this.plugin.settings.colorCombos.forEach((combo) => {
-        const opt = comboSelect.createEl('option');
-        opt.value = combo.id;
-        opt.textContent = combo.name || 'Unnamed';
+      this.addColorInput(row2, 'Font', rule.fontColor, async (v) => {
+        rule.fontColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
       });
-      comboSelect.value = rule.comboId;
-      comboSelect.addEventListener('change', async () => {
-        rule.comboId = comboSelect.value;
+
+      this.addColorInput(row2, 'BG', rule.bgColor, async (v) => {
+        rule.bgColor = v;
         await this.plugin.saveSettings();
         this.plugin.updateStyles();
       });

@@ -22,7 +22,8 @@ export interface RegexRule {
 export interface ConditionalRule {
   id: string;
   name: string;
-  comboId: string;
+  fontColor: string;  // "" = use Obsidian default
+  bgColor: string;    // "" = use Obsidian default
   folderPattern: string;
   filePattern: string;
   condition: 'max' | 'min';

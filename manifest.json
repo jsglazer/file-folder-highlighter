@@ -1,7 +1,7 @@
 {
   "id": "dynamic-file-folder-highlighter",
   "name": "Dynamic File & Folder Highlighter",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minAppVersion": "1.1.0",
   "description": "Custom colors for files/folders via right-click, YAML frontmatter rules, hierarchy, regex, and conditional highlighting.",
   "author": "Josh",

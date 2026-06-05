@@ -101,11 +101,6 @@
   width: 60px;
 }
 
-.hh-combo-select {
-  flex: 1 1 100px;
-  min-width: 80px;
-}
-
 /* Color picker with toggle */
 .hh-color-wrap {
   display: flex;

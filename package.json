@@ -1,6 +1,6 @@
 {
   "name": "dynamic-file-folder-highlighter",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Custom colors for files/folders via right-click, YAML frontmatter rules, hierarchy, regex, and conditional highlighting.",
   "main": "main.js",
   "scripts": {

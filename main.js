@@ -145,12 +145,11 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
     this.renderConditionalRules(condRulesEl);
     new import_obsidian.Setting(containerEl).addButton(
       (btn) => btn.setButtonText("Add conditional rule").setCta().onClick(async () => {
-        var _a, _b;
-        const firstComboId = (_b = (_a = this.plugin.settings.colorCombos[0]) == null ? void 0 : _a.id) != null ? _b : "";
         this.plugin.settings.conditionalRules.push({
           id: genId(),
           name: "New rule",
-          comboId: firstComboId,
+          fontColor: "#ffffff",
+          bgColor: "#9b59b6",
           folderPattern: "",
           filePattern: "",
           condition: "max"
@@ -379,18 +378,13 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         await this.plugin.saveSettings();
         this.plugin.updateStyles();
       });
-      const comboSelect = row2.createEl("select", { cls: "hh-select hh-combo-select" });
-      const noOpt = comboSelect.createEl("option");
-      noOpt.value = "";
-      noOpt.textContent = "\u2014 select combo \u2014";
-      this.plugin.settings.colorCombos.forEach((combo) => {
-        const opt = comboSelect.createEl("option");
-        opt.value = combo.id;
-        opt.textContent = combo.name || "Unnamed";
+      this.addColorInput(row2, "Font", rule.fontColor, async (v) => {
+        rule.fontColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
       });
-      comboSelect.value = rule.comboId;
-      comboSelect.addEventListener("change", async () => {
-        rule.comboId = comboSelect.value;
+      this.addColorInput(row2, "BG", rule.bgColor, async (v) => {
+        rule.bgColor = v;
         await this.plugin.saveSettings();
         this.plugin.updateStyles();
       });
@@ -630,13 +624,10 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       }
     }
     for (const rule of this.settings.conditionalRules) {
-      if (!rule.folderPattern || !rule.filePattern || !rule.comboId)
+      if (!rule.folderPattern || !rule.filePattern)
         continue;
-      const combo = this.settings.colorCombos.find((c) => c.id === rule.comboId);
-      if (!combo)
-        continue;
-      const comboProps = colorProps(combo.fontColor, combo.bgColor);
-      if (!comboProps)
+      const condProps = colorProps(rule.fontColor, rule.bgColor);
+      if (!condProps)
         continue;
       let folderRe, fileRe;
       try {
@@ -670,7 +661,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         const winner = candidates.reduce(
           (best, cur) => rule.condition === "max" ? cur.value > best.value ? cur : best : cur.value < best.value ? cur : best
         );
-        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${comboProps}}
+        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${condProps}}
 `;
       }
     }
