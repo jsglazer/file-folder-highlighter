@@ -21,6 +21,25 @@
   border-bottom: none;
 }
 
+/* Conditional rule grouping */
+.hh-cond-group {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 4px 0 8px;
+}
+
+.hh-cond-group:last-child {
+  border-bottom: none;
+}
+
+.hh-cond-group .hh-row {
+  border-bottom: none;
+  padding: 2px 0;
+}
+
+.hh-cond-header {
+  font-weight: 500;
+}
+
 /* Text inputs */
 .hh-input {
   background: var(--background-primary);
@@ -38,8 +57,8 @@
 }
 
 .hh-pattern-input {
-  flex: 1 1 160px;
-  min-width: 100px;
+  flex: 1 1 140px;
+  min-width: 90px;
   font-family: var(--font-monospace);
 }
 
@@ -60,7 +79,17 @@
   cursor: pointer;
 }
 
-/* Color picker */
+.hh-cond-select {
+  flex-shrink: 0;
+  width: 60px;
+}
+
+.hh-combo-select {
+  flex: 1 1 100px;
+  min-width: 80px;
+}
+
+/* Color picker with toggle */
 .hh-color-wrap {
   display: flex;
   flex-direction: column;
@@ -74,6 +103,14 @@
   color: var(--text-muted);
   line-height: 1;
   user-select: none;
+}
+
+.hh-color-toggle {
+  width: 12px;
+  height: 12px;
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .hh-color-input {

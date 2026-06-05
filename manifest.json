@@ -1,9 +1,9 @@
 {
-  "id": "hierarchy-highlighter",
-  "name": "Hierarchy Highlighter",
-  "version": "1.0.0",
+  "id": "dynamic-file-folder-highlighter",
+  "name": "Dynamic File & Folder Highlighter",
+  "version": "1.1.0",
   "minAppVersion": "1.1.0",
-  "description": "Custom colors for files/folders, hierarchy highlighting, and regex-based highlighting in the file explorer.",
+  "description": "Custom colors for files/folders, hierarchy highlighting, regex-based and conditional highlighting in the file explorer.",
   "author": "Josh",
   "authorUrl": "https://github.com/jsglazer",
   "isDesktopOnly": false

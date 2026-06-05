@@ -20,7 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => HierarchyHighlighterPlugin
+  default: () => DynamicFileFolderHighlighterPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian2 = require("obsidian");
@@ -32,7 +32,8 @@ var DEFAULT_SETTINGS = {
   hierarchyEnabled: false,
   hierarchyFontColor: "#ffffff",
   hierarchyBgColor: "#2c7be5",
-  regexRules: []
+  regexRules: [],
+  conditionalRules: []
 };
 
 // src/settingsTab.ts
@@ -40,7 +41,7 @@ var import_obsidian = require("obsidian");
 function genId() {
   return Math.random().toString(36).substring(2, 9);
 }
-var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSettingTab {
+var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -50,7 +51,7 @@ var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSetting
     containerEl.empty();
     containerEl.createEl("h2", { text: "Color combinations" });
     containerEl.createEl("p", {
-      text: "Named color combinations you can assign to files and folders via right-click.",
+      text: "Named color combinations you can assign to files and folders via right-click. Leave font or background unset to keep the Obsidian default.",
       cls: "setting-item-description"
     });
     const combosEl = containerEl.createDiv("hh-list");
@@ -76,20 +77,18 @@ var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSetting
         this.plugin.updateStyles();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Font color").addColorPicker(
-      (c) => c.setValue(this.plugin.settings.hierarchyFontColor).onChange(async (v) => {
-        this.plugin.settings.hierarchyFontColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Background color").addColorPicker(
-      (c) => c.setValue(this.plugin.settings.hierarchyBgColor).onChange(async (v) => {
-        this.plugin.settings.hierarchyBgColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
-      })
-    );
+    const hierFontRow = new import_obsidian.Setting(containerEl).setName("Font color").setDesc("Leave unset to use the Obsidian default.");
+    this.addColorInput(hierFontRow.controlEl, "", this.plugin.settings.hierarchyFontColor, async (v) => {
+      this.plugin.settings.hierarchyFontColor = v;
+      await this.plugin.saveSettings();
+      this.plugin.updateStyles();
+    });
+    const hierBgRow = new import_obsidian.Setting(containerEl).setName("Background color").setDesc("Leave unset to use the Obsidian default.");
+    this.addColorInput(hierBgRow.controlEl, "", this.plugin.settings.hierarchyBgColor, async (v) => {
+      this.plugin.settings.hierarchyBgColor = v;
+      await this.plugin.saveSettings();
+      this.plugin.updateStyles();
+    });
     containerEl.createEl("h2", { text: "Regex highlighting rules" });
     containerEl.createEl("p", {
       text: "Apply colors to files or folders whose names match a regular expression.",
@@ -109,6 +108,33 @@ var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSetting
         });
         await this.plugin.saveSettings();
         this.renderRules(rulesEl);
+      })
+    );
+    containerEl.createEl("h2", { text: "Conditional highlighting rules" });
+    containerEl.createEl("p", {
+      text: "Highlight the file with the highest or lowest numeric value in folders matching a name pattern.",
+      cls: "setting-item-description"
+    });
+    containerEl.createEl("p", {
+      text: 'Example: folder pattern "^Updates$", file pattern "Update(\\d+)" with condition Max highlights the latest update file in every Updates folder.',
+      cls: "setting-item-description"
+    });
+    const condRulesEl = containerEl.createDiv("hh-list");
+    this.renderConditionalRules(condRulesEl);
+    new import_obsidian.Setting(containerEl).addButton(
+      (btn) => btn.setButtonText("Add conditional rule").setCta().onClick(async () => {
+        var _a, _b;
+        const firstComboId = (_b = (_a = this.plugin.settings.colorCombos[0]) == null ? void 0 : _a.id) != null ? _b : "";
+        this.plugin.settings.conditionalRules.push({
+          id: genId(),
+          name: "New rule",
+          comboId: firstComboId,
+          folderPattern: "",
+          filePattern: "",
+          condition: "max"
+        });
+        await this.plugin.saveSettings();
+        this.renderConditionalRules(condRulesEl);
       })
     );
   }
@@ -142,8 +168,10 @@ var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSetting
         this.plugin.updateStyles();
       });
       const preview = row.createEl("span", { cls: "hh-preview", text: combo.name || "Preview" });
-      preview.style.color = combo.fontColor;
-      preview.style.backgroundColor = combo.bgColor;
+      if (combo.fontColor)
+        preview.style.color = combo.fontColor;
+      if (combo.bgColor)
+        preview.style.backgroundColor = combo.bgColor;
       const del = row.createEl("button", { cls: "hh-btn-delete" });
       del.textContent = "\xD7";
       del.setAttribute("aria-label", "Delete combination");
@@ -215,14 +243,110 @@ var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSetting
       });
     });
   }
+  // ── Conditional rule list ────────────────────────────────────────────────────
+  renderConditionalRules(container) {
+    container.empty();
+    if (this.plugin.settings.conditionalRules.length === 0) {
+      container.createEl("p", { text: "No conditional rules defined.", cls: "setting-item-description hh-empty" });
+      return;
+    }
+    this.plugin.settings.conditionalRules.forEach((rule, i) => {
+      const group = container.createDiv("hh-cond-group");
+      const row1 = group.createDiv("hh-row hh-cond-header");
+      const nameInput = row1.createEl("input", { cls: "hh-input hh-name-input", placeholder: "Rule name" });
+      nameInput.type = "text";
+      nameInput.value = rule.name;
+      nameInput.addEventListener("input", async () => {
+        rule.name = nameInput.value;
+        await this.plugin.saveSettings();
+      });
+      const del = row1.createEl("button", { cls: "hh-btn-delete" });
+      del.textContent = "\xD7";
+      del.setAttribute("aria-label", "Delete rule");
+      del.addEventListener("click", async () => {
+        this.plugin.settings.conditionalRules.splice(i, 1);
+        await this.plugin.saveSettings();
+        this.renderConditionalRules(container);
+        this.plugin.updateStyles();
+      });
+      const row2 = group.createDiv("hh-row");
+      const folderInput = row2.createEl("input", { cls: "hh-input hh-pattern-input", placeholder: "Folder name regex" });
+      folderInput.type = "text";
+      folderInput.value = rule.folderPattern;
+      this.applyPatternValidation(folderInput, rule.folderPattern);
+      folderInput.addEventListener("input", async () => {
+        rule.folderPattern = folderInput.value;
+        this.applyPatternValidation(folderInput, rule.folderPattern);
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      const fileInput = row2.createEl("input", { cls: "hh-input hh-pattern-input", placeholder: "File name regex (capture group = number)" });
+      fileInput.type = "text";
+      fileInput.value = rule.filePattern;
+      this.applyPatternValidation(fileInput, rule.filePattern);
+      fileInput.addEventListener("input", async () => {
+        rule.filePattern = fileInput.value;
+        this.applyPatternValidation(fileInput, rule.filePattern);
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      const condSelect = row2.createEl("select", { cls: "hh-select hh-cond-select" });
+      for (const [val, label] of [["max", "Max"], ["min", "Min"]]) {
+        const opt = condSelect.createEl("option");
+        opt.value = val;
+        opt.textContent = label;
+      }
+      condSelect.value = rule.condition;
+      condSelect.addEventListener("change", async () => {
+        rule.condition = condSelect.value;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      const comboSelect = row2.createEl("select", { cls: "hh-select hh-combo-select" });
+      const noOpt = comboSelect.createEl("option");
+      noOpt.value = "";
+      noOpt.textContent = "\u2014 select combo \u2014";
+      this.plugin.settings.colorCombos.forEach((combo) => {
+        const opt = comboSelect.createEl("option");
+        opt.value = combo.id;
+        opt.textContent = combo.name || "Unnamed";
+      });
+      comboSelect.value = rule.comboId;
+      comboSelect.addEventListener("change", async () => {
+        rule.comboId = comboSelect.value;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+    });
+  }
   // ── Helpers ─────────────────────────────────────────────────────────────────
   addColorInput(parent, label, value, onChange) {
     const wrap = parent.createDiv("hh-color-wrap");
-    wrap.createEl("span", { text: label, cls: "hh-color-label" });
+    if (label)
+      wrap.createEl("span", { text: label, cls: "hh-color-label" });
+    const isSet = value !== "";
+    const checkbox = wrap.createEl("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = isSet;
+    checkbox.classList.add("hh-color-toggle");
+    checkbox.title = "Use custom color";
     const input = wrap.createEl("input", { cls: "hh-color-input" });
     input.type = "color";
-    input.value = value;
-    input.addEventListener("input", () => onChange(input.value));
+    input.value = isSet ? value : "#ffffff";
+    input.style.visibility = isSet ? "visible" : "hidden";
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        input.style.visibility = "visible";
+        onChange(input.value);
+      } else {
+        input.style.visibility = "hidden";
+        onChange("");
+      }
+    });
+    input.addEventListener("input", () => {
+      if (checkbox.checked)
+        onChange(input.value);
+    });
   }
   applyPatternValidation(input, pattern) {
     if (!pattern) {
@@ -239,7 +363,7 @@ var HierarchyHighlighterSettingTab = class extends import_obsidian.PluginSetting
 };
 
 // src/main.ts
-var HierarchyHighlighterPlugin = class extends import_obsidian2.Plugin {
+var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
   constructor() {
     super(...arguments);
     this.currentHierarchyPaths = /* @__PURE__ */ new Set();
@@ -247,9 +371,9 @@ var HierarchyHighlighterPlugin = class extends import_obsidian2.Plugin {
   async onload() {
     await this.loadSettings();
     this.styleEl = document.createElement("style");
-    this.styleEl.id = "hierarchy-highlighter-styles";
+    this.styleEl.id = "dffh-styles";
     document.head.appendChild(this.styleEl);
-    this.addSettingTab(new HierarchyHighlighterSettingTab(this.app, this));
+    this.addSettingTab(new DynamicFileFolderHighlighterSettingTab(this.app, this));
     this.addCommand({
       id: "toggle-hierarchy-highlighting",
       name: "Toggle hierarchy highlighting",
@@ -305,27 +429,39 @@ var HierarchyHighlighterPlugin = class extends import_obsidian2.Plugin {
     await this.saveData(this.settings);
   }
   buildColorMenu(menu, file) {
-    if (this.settings.colorCombos.length === 0)
+    const hasColor = this.settings.fileColors.some((e) => e.path === file.path);
+    if (this.settings.colorCombos.length === 0 && !hasColor)
       return;
-    this.settings.colorCombos.forEach((combo) => {
-      menu.addItem((item) => {
-        const frag = document.createDocumentFragment();
-        const span = document.createElement("span");
-        span.textContent = combo.name;
-        span.style.cssText = `color:${combo.fontColor};background-color:${combo.bgColor};padding:1px 8px;border-radius:3px;`;
-        frag.appendChild(span);
-        item.setTitle(frag).setSection("hh-colors").onClick(async () => {
-          await this.setFileColor(file.path, combo.id);
+    menu.addItem((item) => {
+      item.setTitle("Color options").setSection("dffh-colors");
+      const submenu = item.setSubmenu();
+      this.settings.colorCombos.forEach((combo) => {
+        submenu.addItem((subItem) => {
+          const frag = document.createDocumentFragment();
+          const span = document.createElement("span");
+          span.textContent = combo.name || "Unnamed";
+          if (combo.fontColor || combo.bgColor) {
+            if (combo.fontColor)
+              span.style.color = combo.fontColor;
+            if (combo.bgColor)
+              span.style.backgroundColor = combo.bgColor;
+            span.style.padding = "1px 8px";
+            span.style.borderRadius = "3px";
+          }
+          frag.appendChild(span);
+          subItem.setTitle(frag).onClick(async () => {
+            await this.setFileColor(file.path, combo.id);
+          });
         });
       });
+      if (hasColor) {
+        submenu.addItem((subItem) => {
+          subItem.setTitle("Clear color").setIcon("x-circle").onClick(async () => {
+            await this.clearFileColor(file.path);
+          });
+        });
+      }
     });
-    if (this.settings.fileColors.some((e) => e.path === file.path)) {
-      menu.addItem((item) => {
-        item.setTitle("Clear color").setIcon("x-circle").setSection("hh-colors").onClick(async () => {
-          await this.clearFileColor(file.path);
-        });
-      });
-    }
   }
   async setFileColor(path, comboId) {
     const idx = this.settings.fileColors.findIndex((e) => e.path === path);
@@ -355,9 +491,20 @@ var HierarchyHighlighterPlugin = class extends import_obsidian2.Plugin {
   }
   updateStyles() {
     const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const colorProps = (font, bg) => {
+      let s = "";
+      if (font)
+        s += `color:${font}!important;`;
+      if (bg)
+        s += `background-color:${bg}!important;`;
+      return s;
+    };
     let css = "";
     for (const rule of this.settings.regexRules) {
       if (!rule.pattern)
+        continue;
+      const ruleProps = colorProps(rule.fontColor, rule.bgColor);
+      if (!ruleProps)
         continue;
       let regex;
       try {
@@ -368,7 +515,7 @@ var HierarchyHighlighterPlugin = class extends import_obsidian2.Plugin {
       if (rule.appliesTo !== "folders") {
         for (const file of this.app.vault.getFiles()) {
           if (regex.test(file.name)) {
-            css += `.nav-file-title[data-path="${esc(file.path)}"]{color:${rule.fontColor}!important;background-color:${rule.bgColor}!important}
+            css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}
 `;
           }
         }
@@ -376,23 +523,74 @@ var HierarchyHighlighterPlugin = class extends import_obsidian2.Plugin {
       if (rule.appliesTo !== "files") {
         for (const folder of this.getAllFolders()) {
           if (regex.test(folder.name)) {
-            css += `.nav-folder-title[data-path="${esc(folder.path)}"]{color:${rule.fontColor}!important;background-color:${rule.bgColor}!important}
+            css += `.nav-folder-title[data-path="${esc(folder.path)}"]{${ruleProps}}
 `;
           }
         }
       }
     }
-    if (this.settings.hierarchyEnabled) {
-      for (const path of this.currentHierarchyPaths) {
-        css += `.nav-folder-title[data-path="${esc(path)}"]{color:${this.settings.hierarchyFontColor}!important;background-color:${this.settings.hierarchyBgColor}!important}
+    for (const rule of this.settings.conditionalRules) {
+      if (!rule.folderPattern || !rule.filePattern || !rule.comboId)
+        continue;
+      const combo = this.settings.colorCombos.find((c) => c.id === rule.comboId);
+      if (!combo)
+        continue;
+      const comboProps = colorProps(combo.fontColor, combo.bgColor);
+      if (!comboProps)
+        continue;
+      let folderRe, fileRe;
+      try {
+        folderRe = new RegExp(rule.folderPattern);
+      } catch (e) {
+        continue;
+      }
+      try {
+        fileRe = new RegExp(rule.filePattern);
+      } catch (e) {
+        continue;
+      }
+      for (const folder of this.getAllFolders()) {
+        if (!folderRe.test(folder.name))
+          continue;
+        const children = this.app.vault.getFiles().filter((f) => {
+          var _a;
+          return ((_a = f.parent) == null ? void 0 : _a.path) === folder.path;
+        });
+        const candidates = [];
+        for (const f of children) {
+          const m = fileRe.exec(f.name);
+          if ((m == null ? void 0 : m[1]) !== void 0) {
+            const val = parseFloat(m[1]);
+            if (!isNaN(val))
+              candidates.push({ file: f, value: val });
+          }
+        }
+        if (candidates.length === 0)
+          continue;
+        const winner = candidates.reduce(
+          (best, cur) => rule.condition === "max" ? cur.value > best.value ? cur : best : cur.value < best.value ? cur : best
+        );
+        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${comboProps}}
 `;
+      }
+    }
+    if (this.settings.hierarchyEnabled) {
+      const hierProps = colorProps(this.settings.hierarchyFontColor, this.settings.hierarchyBgColor);
+      if (hierProps) {
+        for (const path of this.currentHierarchyPaths) {
+          css += `.nav-folder-title[data-path="${esc(path)}"]{${hierProps}}
+`;
+        }
       }
     }
     for (const entry of this.settings.fileColors) {
       const combo = this.settings.colorCombos.find((c) => c.id === entry.comboId);
       if (!combo)
         continue;
-      css += `.nav-file-title[data-path="${esc(entry.path)}"],.nav-folder-title[data-path="${esc(entry.path)}"]{color:${combo.fontColor}!important;background-color:${combo.bgColor}!important}
+      const entryProps = colorProps(combo.fontColor, combo.bgColor);
+      if (!entryProps)
+        continue;
+      css += `.nav-file-title[data-path="${esc(entry.path)}"],.nav-folder-title[data-path="${esc(entry.path)}"]{${entryProps}}
 `;
     }
     this.styleEl.textContent = css;

@@ -1,9 +1,9 @@
 import { Plugin, TFile, TFolder, TAbstractFile, Menu, MenuItem, Notice } from 'obsidian';
-import { HierarchyHighlighterSettings, DEFAULT_SETTINGS } from './settings';
-import { HierarchyHighlighterSettingTab } from './settingsTab';
+import { DynamicFileFolderHighlighterSettings, DEFAULT_SETTINGS } from './settings';
+import { DynamicFileFolderHighlighterSettingTab } from './settingsTab';
 
-export default class HierarchyHighlighterPlugin extends Plugin {
-  settings!: HierarchyHighlighterSettings;
+export default class DynamicFileFolderHighlighterPlugin extends Plugin {
+  settings!: DynamicFileFolderHighlighterSettings;
   private styleEl!: HTMLStyleElement;
   private currentHierarchyPaths: Set<string> = new Set();
 
@@ -11,10 +11,10 @@ export default class HierarchyHighlighterPlugin extends Plugin {
     await this.loadSettings();
 
     this.styleEl = document.createElement('style');
-    this.styleEl.id = 'hierarchy-highlighter-styles';
+    this.styleEl.id = 'dffh-styles';
     document.head.appendChild(this.styleEl);
 
-    this.addSettingTab(new HierarchyHighlighterSettingTab(this.app, this));
+    this.addSettingTab(new DynamicFileFolderHighlighterSettingTab(this.app, this));
 
     this.addCommand({
       id: 'toggle-hierarchy-highlighting',
@@ -80,28 +80,39 @@ export default class HierarchyHighlighterPlugin extends Plugin {
   }
 
   private buildColorMenu(menu: Menu, file: TAbstractFile) {
-    if (this.settings.colorCombos.length === 0) return;
+    const hasColor = this.settings.fileColors.some(e => e.path === file.path);
+    if (this.settings.colorCombos.length === 0 && !hasColor) return;
 
-    this.settings.colorCombos.forEach((combo) => {
-      menu.addItem((item: MenuItem) => {
-        const frag = document.createDocumentFragment();
-        const span = document.createElement('span');
-        span.textContent = combo.name;
-        span.style.cssText = `color:${combo.fontColor};background-color:${combo.bgColor};padding:1px 8px;border-radius:3px;`;
-        frag.appendChild(span);
-        item.setTitle(frag).setSection('hh-colors').onClick(async () => {
-          await this.setFileColor(file.path, combo.id);
+    menu.addItem((item: MenuItem) => {
+      item.setTitle('Color options').setSection('dffh-colors');
+      const submenu = (item as any).setSubmenu() as Menu;
+
+      this.settings.colorCombos.forEach((combo) => {
+        submenu.addItem((subItem: MenuItem) => {
+          const frag = document.createDocumentFragment();
+          const span = document.createElement('span');
+          span.textContent = combo.name || 'Unnamed';
+          if (combo.fontColor || combo.bgColor) {
+            if (combo.fontColor) span.style.color = combo.fontColor;
+            if (combo.bgColor) span.style.backgroundColor = combo.bgColor;
+            span.style.padding = '1px 8px';
+            span.style.borderRadius = '3px';
+          }
+          frag.appendChild(span);
+          subItem.setTitle(frag).onClick(async () => {
+            await this.setFileColor(file.path, combo.id);
+          });
         });
       });
+
+      if (hasColor) {
+        submenu.addItem((subItem: MenuItem) => {
+          subItem.setTitle('Clear color').setIcon('x-circle').onClick(async () => {
+            await this.clearFileColor(file.path);
+          });
+        });
+      }
     });
-
-    if (this.settings.fileColors.some(e => e.path === file.path)) {
-      menu.addItem((item: MenuItem) => {
-        item.setTitle('Clear color').setIcon('x-circle').setSection('hh-colors').onClick(async () => {
-          await this.clearFileColor(file.path);
-        });
-      });
-    }
   }
 
   async setFileColor(path: string, comboId: string) {
@@ -135,42 +146,85 @@ export default class HierarchyHighlighterPlugin extends Plugin {
 
   updateStyles() {
     const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const colorProps = (font: string, bg: string): string => {
+      let s = '';
+      if (font) s += `color:${font}!important;`;
+      if (bg) s += `background-color:${bg}!important;`;
+      return s;
+    };
     let css = '';
 
-    // Regex rules — lowest priority (rendered first, overridden by later blocks)
+    // 1. Regex rules — lowest priority
     for (const rule of this.settings.regexRules) {
       if (!rule.pattern) continue;
+      const ruleProps = colorProps(rule.fontColor, rule.bgColor);
+      if (!ruleProps) continue;
       let regex: RegExp;
       try { regex = new RegExp(rule.pattern); } catch { continue; }
 
       if (rule.appliesTo !== 'folders') {
         for (const file of this.app.vault.getFiles()) {
           if (regex.test(file.name)) {
-            css += `.nav-file-title[data-path="${esc(file.path)}"]{color:${rule.fontColor}!important;background-color:${rule.bgColor}!important}\n`;
+            css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}\n`;
           }
         }
       }
       if (rule.appliesTo !== 'files') {
         for (const folder of this.getAllFolders()) {
           if (regex.test(folder.name)) {
-            css += `.nav-folder-title[data-path="${esc(folder.path)}"]{color:${rule.fontColor}!important;background-color:${rule.bgColor}!important}\n`;
+            css += `.nav-folder-title[data-path="${esc(folder.path)}"]{${ruleProps}}\n`;
           }
         }
       }
     }
 
-    // Hierarchy — medium priority
-    if (this.settings.hierarchyEnabled) {
-      for (const path of this.currentHierarchyPaths) {
-        css += `.nav-folder-title[data-path="${esc(path)}"]{color:${this.settings.hierarchyFontColor}!important;background-color:${this.settings.hierarchyBgColor}!important}\n`;
+    // 2. Conditional rules — select max/min file in matching folders
+    for (const rule of this.settings.conditionalRules) {
+      if (!rule.folderPattern || !rule.filePattern || !rule.comboId) continue;
+      const combo = this.settings.colorCombos.find(c => c.id === rule.comboId);
+      if (!combo) continue;
+      const comboProps = colorProps(combo.fontColor, combo.bgColor);
+      if (!comboProps) continue;
+      let folderRe: RegExp, fileRe: RegExp;
+      try { folderRe = new RegExp(rule.folderPattern); } catch { continue; }
+      try { fileRe = new RegExp(rule.filePattern); } catch { continue; }
+
+      for (const folder of this.getAllFolders()) {
+        if (!folderRe.test(folder.name)) continue;
+        const children = this.app.vault.getFiles().filter(f => f.parent?.path === folder.path);
+        const candidates: { file: TFile; value: number }[] = [];
+        for (const f of children) {
+          const m = fileRe.exec(f.name);
+          if (m?.[1] !== undefined) {
+            const val = parseFloat(m[1]);
+            if (!isNaN(val)) candidates.push({ file: f, value: val });
+          }
+        }
+        if (candidates.length === 0) continue;
+        const winner = candidates.reduce((best, cur) =>
+          rule.condition === 'max' ? (cur.value > best.value ? cur : best) : (cur.value < best.value ? cur : best)
+        );
+        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${comboProps}}\n`;
       }
     }
 
-    // Explicit file/folder assignments — highest priority
+    // 3. Hierarchy — highlights ancestor folders of the active file
+    if (this.settings.hierarchyEnabled) {
+      const hierProps = colorProps(this.settings.hierarchyFontColor, this.settings.hierarchyBgColor);
+      if (hierProps) {
+        for (const path of this.currentHierarchyPaths) {
+          css += `.nav-folder-title[data-path="${esc(path)}"]{${hierProps}}\n`;
+        }
+      }
+    }
+
+    // 4. Explicit file/folder assignments — highest priority
     for (const entry of this.settings.fileColors) {
       const combo = this.settings.colorCombos.find(c => c.id === entry.comboId);
       if (!combo) continue;
-      css += `.nav-file-title[data-path="${esc(entry.path)}"],.nav-folder-title[data-path="${esc(entry.path)}"]{color:${combo.fontColor}!important;background-color:${combo.bgColor}!important}\n`;
+      const entryProps = colorProps(combo.fontColor, combo.bgColor);
+      if (!entryProps) continue;
+      css += `.nav-file-title[data-path="${esc(entry.path)}"],.nav-folder-title[data-path="${esc(entry.path)}"]{${entryProps}}\n`;
     }
 
     this.styleEl.textContent = css;
