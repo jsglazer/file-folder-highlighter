@@ -170,7 +170,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 
       if (rule.appliesTo !== 'folders') {
         for (const file of this.app.vault.getFiles()) {
-          if (regex.test(file.name)) {
+          if (regex.test(file.basename)) {
             css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}\n`;
           }
         }
@@ -213,7 +213,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
         const children = this.app.vault.getFiles().filter(f => f.parent?.path === folder.path);
         const candidates: { file: TFile; value: number }[] = [];
         for (const f of children) {
-          const m = fileRe.exec(f.name);
+          const m = fileRe.exec(f.basename);
           if (m?.[1] !== undefined) {
             const val = parseFloat(m[1]);
             if (!isNaN(val)) candidates.push({ file: f, value: val });
