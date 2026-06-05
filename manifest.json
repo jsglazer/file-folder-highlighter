@@ -1,0 +1,10 @@
+{
+  "id": "hierarchy-highlighter",
+  "name": "Hierarchy Highlighter",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.0",
+  "description": "Custom colors for files/folders, hierarchy highlighting, and regex-based highlighting in the file explorer.",
+  "author": "Josh",
+  "authorUrl": "https://github.com/jsglazer",
+  "isDesktopOnly": false
+}
