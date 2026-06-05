@@ -61,6 +61,12 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       })
     );
 
+    this.registerEvent(
+      this.app.metadataCache.on('changed', () => {
+        this.updateStyles();
+      })
+    );
+
     this.app.workspace.onLayoutReady(() => {
       this.updateHierarchy();
       this.updateStyles();
@@ -178,7 +184,22 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       }
     }
 
-    // 2. Conditional rules — select max/min file in matching folders
+    // 2. YAML frontmatter rules — files only
+    for (const rule of this.settings.yamlRules) {
+      if (!rule.key || !rule.value) continue;
+      const ruleProps = colorProps(rule.fontColor, rule.bgColor);
+      if (!ruleProps) continue;
+      for (const file of this.app.vault.getFiles()) {
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (!fm) continue;
+        const val = fm[rule.key];
+        if (val !== undefined && val !== null && String(val).trim() === rule.value.trim()) {
+          css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}\n`;
+        }
+      }
+    }
+
+    // 3. Conditional rules — select max/min file in matching folders
     for (const rule of this.settings.conditionalRules) {
       if (!rule.folderPattern || !rule.filePattern || !rule.comboId) continue;
       const combo = this.settings.colorCombos.find(c => c.id === rule.comboId);
@@ -208,7 +229,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       }
     }
 
-    // 3. Hierarchy — highlights ancestor folders of the active file
+    // 4. Hierarchy — highlights ancestor folders of the active file
     if (this.settings.hierarchyEnabled) {
       const hierProps = colorProps(this.settings.hierarchyFontColor, this.settings.hierarchyBgColor);
       if (hierProps) {
@@ -218,7 +239,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       }
     }
 
-    // 4. Explicit file/folder assignments — highest priority
+    // 5. Explicit file/folder assignments — highest priority
     for (const entry of this.settings.fileColors) {
       const combo = this.settings.colorCombos.find(c => c.id === entry.comboId);
       if (!combo) continue;

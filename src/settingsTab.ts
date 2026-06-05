@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import DynamicFileFolderHighlighterPlugin from './main';
-import { ColorCombo, RegexRule, ConditionalRule } from './settings';
+import { ColorCombo, RegexRule, YamlRule, ConditionalRule } from './settings';
 
 function genId(): string {
   return Math.random().toString(36).substring(2, 9);
@@ -93,6 +93,28 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
           });
           await this.plugin.saveSettings();
           this.renderRules(rulesEl);
+        })
+      );
+
+    // ── YAML Rules ───────────────────────────────────────────────────────────
+    containerEl.createEl('h2', { text: 'YAML frontmatter rules' });
+    containerEl.createEl('p', {
+      text: 'Apply colors to files whose frontmatter contains a specific key/value pair (e.g. status: Refine). Files only — folders have no frontmatter.',
+      cls: 'setting-item-description',
+    });
+
+    const yamlRulesEl = containerEl.createDiv('hh-list');
+    this.renderYamlRules(yamlRulesEl);
+
+    new Setting(containerEl)
+      .addButton(btn =>
+        btn.setButtonText('Add YAML rule').setCta().onClick(async () => {
+          this.plugin.settings.yamlRules.push({
+            id: genId(), name: 'New rule', key: '', value: '',
+            fontColor: '#ffffff', bgColor: '#27ae60',
+          });
+          await this.plugin.saveSettings();
+          this.renderYamlRules(yamlRulesEl);
         })
       );
 
@@ -241,6 +263,72 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         this.plugin.settings.regexRules.splice(i, 1);
         await this.plugin.saveSettings();
         this.renderRules(container);
+        this.plugin.updateStyles();
+      });
+    });
+  }
+
+  // ── YAML rule list ───────────────────────────────────────────────────────────
+
+  private renderYamlRules(container: HTMLElement) {
+    container.empty();
+
+    if (this.plugin.settings.yamlRules.length === 0) {
+      container.createEl('p', { text: 'No YAML rules defined.', cls: 'setting-item-description hh-empty' });
+      return;
+    }
+
+    this.plugin.settings.yamlRules.forEach((rule: YamlRule, i: number) => {
+      const row = container.createDiv('hh-row');
+
+      const nameInput = row.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Rule name' });
+      nameInput.type = 'text';
+      nameInput.value = rule.name;
+      nameInput.addEventListener('input', async () => {
+        rule.name = nameInput.value;
+        await this.plugin.saveSettings();
+      });
+
+      const keyInput = row.createEl('input', { cls: 'hh-input hh-key-input', placeholder: 'Key' });
+      keyInput.type = 'text';
+      keyInput.value = rule.key;
+      keyInput.addEventListener('input', async () => {
+        rule.key = keyInput.value.trim();
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+
+      const sep = row.createEl('span', { text: ':', cls: 'hh-yaml-sep' });
+      sep.setAttribute('aria-hidden', 'true');
+
+      const valueInput = row.createEl('input', { cls: 'hh-input hh-value-input', placeholder: 'Value' });
+      valueInput.type = 'text';
+      valueInput.value = rule.value;
+      valueInput.addEventListener('input', async () => {
+        rule.value = valueInput.value;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+
+      this.addColorInput(row, 'Font', rule.fontColor, async (v) => {
+        rule.fontColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+
+      this.addColorInput(row, 'BG', rule.bgColor, async (v) => {
+        rule.bgColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+
+      const del = row.createEl('button', { cls: 'hh-btn-delete' });
+      del.textContent = '×';
+      del.setAttribute('aria-label', 'Delete rule');
+      del.addEventListener('click', async () => {
+        this.plugin.settings.yamlRules.splice(i, 1);
+        await this.plugin.saveSettings();
+        this.renderYamlRules(container);
         this.plugin.updateStyles();
       });
     });

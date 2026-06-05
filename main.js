@@ -33,6 +33,7 @@ var DEFAULT_SETTINGS = {
   hierarchyFontColor: "#ffffff",
   hierarchyBgColor: "#2c7be5",
   regexRules: [],
+  yamlRules: [],
   conditionalRules: []
 };
 
@@ -108,6 +109,27 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         });
         await this.plugin.saveSettings();
         this.renderRules(rulesEl);
+      })
+    );
+    containerEl.createEl("h2", { text: "YAML frontmatter rules" });
+    containerEl.createEl("p", {
+      text: "Apply colors to files whose frontmatter contains a specific key/value pair (e.g. status: Refine). Files only \u2014 folders have no frontmatter.",
+      cls: "setting-item-description"
+    });
+    const yamlRulesEl = containerEl.createDiv("hh-list");
+    this.renderYamlRules(yamlRulesEl);
+    new import_obsidian.Setting(containerEl).addButton(
+      (btn) => btn.setButtonText("Add YAML rule").setCta().onClick(async () => {
+        this.plugin.settings.yamlRules.push({
+          id: genId(),
+          name: "New rule",
+          key: "",
+          value: "",
+          fontColor: "#ffffff",
+          bgColor: "#27ae60"
+        });
+        await this.plugin.saveSettings();
+        this.renderYamlRules(yamlRulesEl);
       })
     );
     containerEl.createEl("h2", { text: "Conditional highlighting rules" });
@@ -239,6 +261,61 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         this.plugin.settings.regexRules.splice(i, 1);
         await this.plugin.saveSettings();
         this.renderRules(container);
+        this.plugin.updateStyles();
+      });
+    });
+  }
+  // ── YAML rule list ───────────────────────────────────────────────────────────
+  renderYamlRules(container) {
+    container.empty();
+    if (this.plugin.settings.yamlRules.length === 0) {
+      container.createEl("p", { text: "No YAML rules defined.", cls: "setting-item-description hh-empty" });
+      return;
+    }
+    this.plugin.settings.yamlRules.forEach((rule, i) => {
+      const row = container.createDiv("hh-row");
+      const nameInput = row.createEl("input", { cls: "hh-input hh-name-input", placeholder: "Rule name" });
+      nameInput.type = "text";
+      nameInput.value = rule.name;
+      nameInput.addEventListener("input", async () => {
+        rule.name = nameInput.value;
+        await this.plugin.saveSettings();
+      });
+      const keyInput = row.createEl("input", { cls: "hh-input hh-key-input", placeholder: "Key" });
+      keyInput.type = "text";
+      keyInput.value = rule.key;
+      keyInput.addEventListener("input", async () => {
+        rule.key = keyInput.value.trim();
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      const sep = row.createEl("span", { text: ":", cls: "hh-yaml-sep" });
+      sep.setAttribute("aria-hidden", "true");
+      const valueInput = row.createEl("input", { cls: "hh-input hh-value-input", placeholder: "Value" });
+      valueInput.type = "text";
+      valueInput.value = rule.value;
+      valueInput.addEventListener("input", async () => {
+        rule.value = valueInput.value;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      this.addColorInput(row, "Font", rule.fontColor, async (v) => {
+        rule.fontColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      this.addColorInput(row, "BG", rule.bgColor, async (v) => {
+        rule.bgColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+      const del = row.createEl("button", { cls: "hh-btn-delete" });
+      del.textContent = "\xD7";
+      del.setAttribute("aria-label", "Delete rule");
+      del.addEventListener("click", async () => {
+        this.plugin.settings.yamlRules.splice(i, 1);
+        await this.plugin.saveSettings();
+        this.renderYamlRules(container);
         this.plugin.updateStyles();
       });
     });
@@ -414,6 +491,11 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         }
       })
     );
+    this.registerEvent(
+      this.app.metadataCache.on("changed", () => {
+        this.updateStyles();
+      })
+    );
     this.app.workspace.onLayoutReady(() => {
       this.updateHierarchy();
       this.updateStyles();
@@ -490,6 +572,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
     this.updateStyles();
   }
   updateStyles() {
+    var _a;
     const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const colorProps = (font, bg) => {
       let s = "";
@@ -529,6 +612,23 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         }
       }
     }
+    for (const rule of this.settings.yamlRules) {
+      if (!rule.key || !rule.value)
+        continue;
+      const ruleProps = colorProps(rule.fontColor, rule.bgColor);
+      if (!ruleProps)
+        continue;
+      for (const file of this.app.vault.getFiles()) {
+        const fm = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+        if (!fm)
+          continue;
+        const val = fm[rule.key];
+        if (val !== void 0 && val !== null && String(val).trim() === rule.value.trim()) {
+          css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}
+`;
+        }
+      }
+    }
     for (const rule of this.settings.conditionalRules) {
       if (!rule.folderPattern || !rule.filePattern || !rule.comboId)
         continue;
@@ -553,8 +653,8 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         if (!folderRe.test(folder.name))
           continue;
         const children = this.app.vault.getFiles().filter((f) => {
-          var _a;
-          return ((_a = f.parent) == null ? void 0 : _a.path) === folder.path;
+          var _a2;
+          return ((_a2 = f.parent) == null ? void 0 : _a2.path) === folder.path;
         });
         const candidates = [];
         for (const f of children) {

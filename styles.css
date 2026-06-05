@@ -62,6 +62,23 @@
   font-family: var(--font-monospace);
 }
 
+.hh-key-input {
+  flex: 0 1 110px;
+  min-width: 70px;
+}
+
+.hh-value-input {
+  flex: 1 1 120px;
+  min-width: 80px;
+}
+
+.hh-yaml-sep {
+  color: var(--text-muted);
+  font-weight: bold;
+  flex-shrink: 0;
+  line-height: 28px;
+}
+
 .hh-pattern-input.hh-invalid {
   color: var(--color-red, #e74c3c);
   border-color: var(--color-red, #e74c3c);

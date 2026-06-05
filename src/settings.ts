@@ -28,6 +28,15 @@ export interface ConditionalRule {
   condition: 'max' | 'min';
 }
 
+export interface YamlRule {
+  id: string;
+  name: string;
+  key: string;
+  value: string;
+  fontColor: string;  // "" = use Obsidian default
+  bgColor: string;    // "" = use Obsidian default
+}
+
 export interface DynamicFileFolderHighlighterSettings {
   colorCombos: ColorCombo[];
   fileColors: FileColorEntry[];
@@ -35,6 +44,7 @@ export interface DynamicFileFolderHighlighterSettings {
   hierarchyFontColor: string;
   hierarchyBgColor: string;
   regexRules: RegexRule[];
+  yamlRules: YamlRule[];
   conditionalRules: ConditionalRule[];
 }
 
@@ -45,5 +55,6 @@ export const DEFAULT_SETTINGS: DynamicFileFolderHighlighterSettings = {
   hierarchyFontColor: '#ffffff',
   hierarchyBgColor: '#2c7be5',
   regexRules: [],
+  yamlRules: [],
   conditionalRules: [],
 };
