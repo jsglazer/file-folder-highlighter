@@ -509,7 +509,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
     if (this.settings.colorCombos.length === 0 && !hasColor)
       return;
     menu.addItem((item) => {
-      item.setTitle("Color options").setSection("dffh-colors");
+      item.setTitle("Ff/Fld Color Options").setSection("dffh-colors");
       const submenu = item.setSubmenu();
       this.settings.colorCombos.forEach((combo) => {
         submenu.addItem((subItem) => {
@@ -591,7 +591,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       }
       if (rule.appliesTo !== "folders") {
         for (const file of this.app.vault.getFiles()) {
-          if (regex.test(file.name)) {
+          if (regex.test(file.basename)) {
             css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}
 `;
           }
@@ -649,7 +649,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         });
         const candidates = [];
         for (const f of children) {
-          const m = fileRe.exec(f.name);
+          const m = fileRe.exec(f.basename);
           if ((m == null ? void 0 : m[1]) !== void 0) {
             const val = parseFloat(m[1]);
             if (!isNaN(val))
