@@ -4,7 +4,7 @@ An Obsidian plugin that provides rich visual highlighting for files and folders 
 
 ## Features
 
-- **Custom colors for files/folders**: Right-click any file or folder → "Color options" to assign a named color combination. Font and background colors are each optional — leave either unset to keep the Obsidian default.
+- **Custom colors for files/folders**: Right-click any file or folder → "Ff/Fld Color Options" to assign a named color combination. Font and background colors are each optional — leave either unset to keep the Obsidian default.
 - **Parent hierarchy highlighting**: Automatically highlights all ancestor folders of the currently active file. Toggle on/off via settings or command palette.
 - **Regex-based highlighting**: Define regex patterns with associated colors that apply to matching file/folder names. Supports targeting files, folders, or both. File patterns match against the **basename** (no extension), so `\bDev$` matches `MyNoteDev.md` — write patterns as if the `.md` isn't there.
 - **YAML frontmatter rules**: Apply colors to files based on a specific key/value in their frontmatter (e.g. `status: Refine`). Updates live as you edit files. Files only — folders have no frontmatter.
