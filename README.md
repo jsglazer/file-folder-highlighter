@@ -1,6 +1,6 @@
 # Dynamic File & Folder Highlighter
 
-An Obsidian plugin that provides rich visual highlighting for files and folders in the file explorer.
+An Obsidian plugin that provides rich and flexible visual highlighting for files and folders in the file explorer (and tab header if desired).
 
 ## Features
 
@@ -17,6 +17,7 @@ An Obsidian plugin that provides rich visual highlighting for files and folders 
 - Regex rules with live validation (invalid patterns shown in red); file patterns match the basename — no need to account for the `.md` extension
 - YAML rules: key + exact value (case-sensitive trim match)
 - Conditional rules: folder name regex + file name regex with numeric capture group + max/min condition
+- Regex and conditional rules can optionally be applied to the evaluated tab header.
 
 ## Priority
 
