@@ -41,3 +41,5 @@ When multiple rules match the same file/folder, later rules win:
 ## License
 
 MIT
+
+Made with Claude!
