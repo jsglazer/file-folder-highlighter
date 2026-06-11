@@ -350,13 +350,17 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       const style = this.tabStyleMap.get(file.path);
       if (!style) return;
       // Prefer the inner title element so Obsidian's active/inactive tab
-      // styling stays visible; tabHeaderEl/tabHeaderInnerTitleEl are
+      // background indicator (which lives on tabHeaderEl, not the inner
+      // title) stays visible; tabHeaderEl/tabHeaderInnerTitleEl are
       // undocumented APIs, hence the guards.
+      // 'important' is required because Obsidian styles the *active* tab's
+      // title color with !important — without it, our color applies to
+      // inactive tabs only and the active tab reverts to the default.
       const tabEl = (leaf as any).tabHeaderEl as HTMLElement | undefined;
       const target = ((leaf as any).tabHeaderInnerTitleEl as HTMLElement | undefined) ?? tabEl;
       if (!target) return;
-      if (style.font) target.style.setProperty('color', style.font);
-      if (style.bg) target.style.setProperty('background-color', style.bg);
+      if (style.font) target.style.setProperty('color', style.font, 'important');
+      if (style.bg) target.style.setProperty('background-color', style.bg, 'important');
       target.classList.add('dffh-tab-styled');
     });
   }

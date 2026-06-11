@@ -793,9 +793,9 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       if (!target)
         return;
       if (style.font)
-        target.style.setProperty("color", style.font);
+        target.style.setProperty("color", style.font, "important");
       if (style.bg)
-        target.style.setProperty("background-color", style.bg);
+        target.style.setProperty("background-color", style.bg, "important");
       target.classList.add("dffh-tab-styled");
     });
   }
