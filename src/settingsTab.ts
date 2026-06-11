@@ -3,7 +3,9 @@ import DynamicFileFolderHighlighterPlugin from './main';
 import { ColorCombo, RegexRule, YamlRule, ConditionalRule } from './settings';
 
 function genId(): string {
-  return Math.random().toString(36).substring(2, 9);
+  const c = globalThis.crypto as Crypto | undefined;
+  if (c && typeof (c as any).randomUUID === 'function') return (c as any).randomUUID();
+  return Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 }
 
 export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
@@ -59,19 +61,17 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     const hierFontRow = new Setting(containerEl)
       .setName('Font color')
       .setDesc('Leave unset to use the Obsidian default.');
-    this.addColorInput(hierFontRow.controlEl, '', this.plugin.settings.hierarchyFontColor, async (v) => {
+    this.addColorInput(hierFontRow.controlEl, '', this.plugin.settings.hierarchyFontColor, (v) => {
       this.plugin.settings.hierarchyFontColor = v;
-      await this.plugin.saveSettings();
-      this.plugin.updateStyles();
+      this.plugin.scheduleSaveAndUpdate();
     });
 
     const hierBgRow = new Setting(containerEl)
       .setName('Background color')
       .setDesc('Leave unset to use the Obsidian default.');
-    this.addColorInput(hierBgRow.controlEl, '', this.plugin.settings.hierarchyBgColor, async (v) => {
+    this.addColorInput(hierBgRow.controlEl, '', this.plugin.settings.hierarchyBgColor, (v) => {
       this.plugin.settings.hierarchyBgColor = v;
-      await this.plugin.saveSettings();
-      this.plugin.updateStyles();
+      this.plugin.scheduleSaveAndUpdate();
     });
 
     // ── Regex Rules ───────────────────────────────────────────────────────────
@@ -159,37 +159,36 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     this.plugin.settings.colorCombos.forEach((combo: ColorCombo, i: number) => {
       const row = container.createDiv('hh-row');
 
-      const nameInput = row.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Name' });
-      nameInput.type = 'text';
-      nameInput.value = combo.name;
-      nameInput.addEventListener('input', async () => {
-        combo.name = nameInput.value;
-        preview.textContent = combo.name || 'Preview';
-        await this.plugin.saveSettings();
-      });
-
-      this.addColorInput(row, 'Font', combo.fontColor, async (v) => {
-        combo.fontColor = v;
-        preview.style.color = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
-      });
-
-      this.addColorInput(row, 'BG', combo.bgColor, async (v) => {
-        combo.bgColor = v;
-        preview.style.backgroundColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
-      });
-
-      const preview = row.createEl('span', { cls: 'hh-preview', text: combo.name || 'Preview' });
+      // Created detached and appended later so listeners below can close over
+      // it while it still renders after the color inputs.
+      const preview = createSpan({ cls: 'hh-preview', text: combo.name || 'Preview' });
       if (combo.fontColor) preview.style.color = combo.fontColor;
       if (combo.bgColor) preview.style.backgroundColor = combo.bgColor;
 
-      const del = row.createEl('button', { cls: 'hh-btn-delete' });
-      del.textContent = '×';
-      del.setAttribute('aria-label', 'Delete combination');
-      del.addEventListener('click', async () => {
+      const nameInput = row.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Name' });
+      nameInput.type = 'text';
+      nameInput.value = combo.name;
+      nameInput.addEventListener('input', () => {
+        combo.name = nameInput.value;
+        preview.textContent = combo.name || 'Preview';
+        this.plugin.scheduleSaveAndUpdate();
+      });
+
+      this.addColorInput(row, 'Font', combo.fontColor, (v) => {
+        combo.fontColor = v;
+        preview.style.color = v;
+        this.plugin.scheduleSaveAndUpdate();
+      });
+
+      this.addColorInput(row, 'BG', combo.bgColor, (v) => {
+        combo.bgColor = v;
+        preview.style.backgroundColor = v;
+        this.plugin.scheduleSaveAndUpdate();
+      });
+
+      row.appendChild(preview);
+
+      this.addDeleteButton(row, 'Delete combination', async () => {
         this.plugin.settings.colorCombos.splice(i, 1);
         this.plugin.settings.fileColors = this.plugin.settings.fileColors.filter(e => e.comboId !== combo.id);
         await this.plugin.saveSettings();
@@ -215,20 +214,19 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       const nameInput = row.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Rule name' });
       nameInput.type = 'text';
       nameInput.value = rule.name;
-      nameInput.addEventListener('input', async () => {
+      nameInput.addEventListener('input', () => {
         rule.name = nameInput.value;
-        await this.plugin.saveSettings();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
       const patternInput = row.createEl('input', { cls: 'hh-input hh-pattern-input', placeholder: 'Regex pattern' });
       patternInput.type = 'text';
       patternInput.value = rule.pattern;
       this.applyPatternValidation(patternInput, rule.pattern);
-      patternInput.addEventListener('input', async () => {
+      patternInput.addEventListener('input', () => {
         rule.pattern = patternInput.value;
         this.applyPatternValidation(patternInput, rule.pattern);
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
       const select = row.createEl('select', { cls: 'hh-select' });
@@ -244,35 +242,19 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         this.plugin.updateStyles();
       });
 
-      this.addColorInput(row, 'Font', rule.fontColor, async (v) => {
+      this.addColorInput(row, 'Font', rule.fontColor, (v) => {
         rule.fontColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      this.addColorInput(row, 'BG', rule.bgColor, async (v) => {
+      this.addColorInput(row, 'BG', rule.bgColor, (v) => {
         rule.bgColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      const tabWrap = row.createDiv('hh-color-wrap');
-      tabWrap.createEl('span', { text: 'Tab', cls: 'hh-color-label' });
-      const tabChk = tabWrap.createEl('input');
-      tabChk.type = 'checkbox';
-      tabChk.checked = !!rule.applyToTab;
-      tabChk.classList.add('hh-color-toggle');
-      tabChk.title = 'Apply formatting to open tab header';
-      tabChk.addEventListener('change', async () => {
-        rule.applyToTab = tabChk.checked;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
-      });
+      this.addTabToggle(row, rule);
 
-      const del = row.createEl('button', { cls: 'hh-btn-delete' });
-      del.textContent = '×';
-      del.setAttribute('aria-label', 'Delete rule');
-      del.addEventListener('click', async () => {
+      this.addDeleteButton(row, 'Delete rule', async () => {
         this.plugin.settings.regexRules.splice(i, 1);
         await this.plugin.saveSettings();
         this.renderRules(container);
@@ -297,18 +279,17 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       const nameInput = row.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Rule name' });
       nameInput.type = 'text';
       nameInput.value = rule.name;
-      nameInput.addEventListener('input', async () => {
+      nameInput.addEventListener('input', () => {
         rule.name = nameInput.value;
-        await this.plugin.saveSettings();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
       const keyInput = row.createEl('input', { cls: 'hh-input hh-key-input', placeholder: 'Key' });
       keyInput.type = 'text';
       keyInput.value = rule.key;
-      keyInput.addEventListener('input', async () => {
+      keyInput.addEventListener('input', () => {
         rule.key = keyInput.value.trim();
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
       const sep = row.createEl('span', { text: ':', cls: 'hh-yaml-sep' });
@@ -317,28 +298,22 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       const valueInput = row.createEl('input', { cls: 'hh-input hh-value-input', placeholder: 'Value' });
       valueInput.type = 'text';
       valueInput.value = rule.value;
-      valueInput.addEventListener('input', async () => {
+      valueInput.addEventListener('input', () => {
         rule.value = valueInput.value;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      this.addColorInput(row, 'Font', rule.fontColor, async (v) => {
+      this.addColorInput(row, 'Font', rule.fontColor, (v) => {
         rule.fontColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      this.addColorInput(row, 'BG', rule.bgColor, async (v) => {
+      this.addColorInput(row, 'BG', rule.bgColor, (v) => {
         rule.bgColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      const del = row.createEl('button', { cls: 'hh-btn-delete' });
-      del.textContent = '×';
-      del.setAttribute('aria-label', 'Delete rule');
-      del.addEventListener('click', async () => {
+      this.addDeleteButton(row, 'Delete rule', async () => {
         this.plugin.settings.yamlRules.splice(i, 1);
         await this.plugin.saveSettings();
         this.renderYamlRules(container);
@@ -366,15 +341,12 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       const nameInput = row1.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Rule name' });
       nameInput.type = 'text';
       nameInput.value = rule.name;
-      nameInput.addEventListener('input', async () => {
+      nameInput.addEventListener('input', () => {
         rule.name = nameInput.value;
-        await this.plugin.saveSettings();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      const del = row1.createEl('button', { cls: 'hh-btn-delete' });
-      del.textContent = '×';
-      del.setAttribute('aria-label', 'Delete rule');
-      del.addEventListener('click', async () => {
+      this.addDeleteButton(row1, 'Delete rule', async () => {
         this.plugin.settings.conditionalRules.splice(i, 1);
         await this.plugin.saveSettings();
         this.renderConditionalRules(container);
@@ -388,22 +360,20 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       folderInput.type = 'text';
       folderInput.value = rule.folderPattern;
       this.applyPatternValidation(folderInput, rule.folderPattern);
-      folderInput.addEventListener('input', async () => {
+      folderInput.addEventListener('input', () => {
         rule.folderPattern = folderInput.value;
         this.applyPatternValidation(folderInput, rule.folderPattern);
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
       const fileInput = row2.createEl('input', { cls: 'hh-input hh-pattern-input', placeholder: 'File name regex (capture group = number)' });
       fileInput.type = 'text';
       fileInput.value = rule.filePattern;
-      this.applyPatternValidation(fileInput, rule.filePattern);
-      fileInput.addEventListener('input', async () => {
+      this.applyPatternValidation(fileInput, rule.filePattern, true);
+      fileInput.addEventListener('input', () => {
         rule.filePattern = fileInput.value;
-        this.applyPatternValidation(fileInput, rule.filePattern);
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.applyPatternValidation(fileInput, rule.filePattern, true);
+        this.plugin.scheduleSaveAndUpdate();
       });
 
       const condSelect = row2.createEl('select', { cls: 'hh-select hh-cond-select' });
@@ -419,30 +389,17 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         this.plugin.updateStyles();
       });
 
-      this.addColorInput(row2, 'Font', rule.fontColor, async (v) => {
+      this.addColorInput(row2, 'Font', rule.fontColor, (v) => {
         rule.fontColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      this.addColorInput(row2, 'BG', rule.bgColor, async (v) => {
+      this.addColorInput(row2, 'BG', rule.bgColor, (v) => {
         rule.bgColor = v;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.plugin.scheduleSaveAndUpdate();
       });
 
-      const tabWrap = row2.createDiv('hh-color-wrap');
-      tabWrap.createEl('span', { text: 'Tab', cls: 'hh-color-label' });
-      const tabChk = tabWrap.createEl('input');
-      tabChk.type = 'checkbox';
-      tabChk.checked = !!rule.applyToTab;
-      tabChk.classList.add('hh-color-toggle');
-      tabChk.title = 'Apply formatting to open tab header';
-      tabChk.addEventListener('change', async () => {
-        rule.applyToTab = tabChk.checked;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
-      });
+      this.addTabToggle(row2, rule);
     });
   }
 
@@ -452,7 +409,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     parent: HTMLElement,
     label: string,
     value: string,
-    onChange: (v: string) => Promise<void>
+    onChange: (v: string) => void
   ): void {
     const wrap = parent.createDiv('hh-color-wrap');
     if (label) wrap.createEl('span', { text: label, cls: 'hh-color-label' });
@@ -485,16 +442,54 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     });
   }
 
-  private applyPatternValidation(input: HTMLInputElement, pattern: string) {
+  private addTabToggle(parent: HTMLElement, rule: RegexRule | ConditionalRule): void {
+    const wrap = parent.createDiv('hh-color-wrap');
+    wrap.createEl('span', { text: 'Tab', cls: 'hh-color-label' });
+    const chk = wrap.createEl('input');
+    chk.type = 'checkbox';
+    chk.checked = !!rule.applyToTab;
+    chk.classList.add('hh-color-toggle');
+    chk.title = 'Apply formatting to open tab header';
+    chk.addEventListener('change', async () => {
+      rule.applyToTab = chk.checked;
+      await this.plugin.saveSettings();
+      this.plugin.updateStyles();
+    });
+  }
+
+  private addDeleteButton(parent: HTMLElement, ariaLabel: string, onDelete: () => Promise<void>): void {
+    const del = parent.createEl('button', { cls: 'hh-btn-delete' });
+    del.textContent = '×';
+    del.setAttribute('aria-label', ariaLabel);
+    del.addEventListener('click', () => {
+      onDelete().catch(console.error);
+    });
+  }
+
+  private applyPatternValidation(input: HTMLInputElement, pattern: string, requireGroup = false) {
     if (!pattern) {
       input.classList.remove('hh-invalid');
+      input.title = '';
       return;
     }
     try {
       new RegExp(pattern);
-      input.classList.remove('hh-invalid');
     } catch {
       input.classList.add('hh-invalid');
+      input.title = 'Invalid regular expression';
+      return;
     }
+    // Appending "|" makes the regex match the empty string, so exec reveals
+    // the capture-group count without needing a matching input.
+    if (requireGroup) {
+      const groups = (new RegExp(pattern + '|').exec('') as RegExpExecArray).length - 1;
+      if (groups === 0) {
+        input.classList.add('hh-invalid');
+        input.title = 'Pattern needs a capture group around the number, e.g. Update(\\d+)';
+        return;
+      }
+    }
+    input.classList.remove('hh-invalid');
+    input.title = '';
   }
 }

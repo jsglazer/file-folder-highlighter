@@ -1,11 +1,26 @@
-import { Plugin, TFile, TFolder, TAbstractFile, Menu, MenuItem, Notice } from 'obsidian';
+import { Plugin, TFile, TFolder, TAbstractFile, Menu, MenuItem, Notice, debounce } from 'obsidian';
 import { DynamicFileFolderHighlighterSettings, DEFAULT_SETTINGS } from './settings';
 import { DynamicFileFolderHighlighterSettingTab } from './settingsTab';
+
+// Colors are interpolated into CSS text; only accept hex values (which is all
+// the color pickers can produce) so a hand-edited data.json can't inject CSS.
+const SAFE_COLOR = /^#[0-9a-fA-F]{3,8}$/;
 
 export default class DynamicFileFolderHighlighterPlugin extends Plugin {
   settings!: DynamicFileFolderHighlighterSettings;
   private styleEl!: HTMLStyleElement;
   private currentHierarchyPaths: Set<string> = new Set();
+  // Computed as a byproduct of updateStyles(); applyTabStyles() reads from it
+  // so layout-change handling never has to rescan the vault.
+  private tabStyleMap: Map<string, { font: string; bg: string }> = new Map();
+
+  private debouncedUpdate = debounce(() => this.updateStyles(), 250, true);
+
+  /** Debounced save + refresh for rapid-fire settings inputs (typing, color drag). */
+  scheduleSaveAndUpdate = debounce(() => {
+    this.saveSettings().catch(console.error);
+    this.updateStyles();
+  }, 250, true);
 
   async onload() {
     await this.loadSettings();
@@ -40,36 +55,53 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
     );
 
     this.registerEvent(
-      this.app.vault.on('rename', (file, oldPath) => {
-        const entry = this.settings.fileColors.find(e => e.path === oldPath);
-        if (entry) {
-          entry.path = file.path;
-          this.saveSettings();
-          this.updateStyles();
-        }
+      this.app.vault.on('create', () => {
+        this.debouncedUpdate();
       })
     );
 
     this.registerEvent(
-      this.app.vault.on('delete', (file) => {
-        const before = this.settings.fileColors.length;
-        this.settings.fileColors = this.settings.fileColors.filter(e => e.path !== file.path);
-        if (this.settings.fileColors.length !== before) {
-          this.saveSettings();
-          this.updateStyles();
+      this.app.vault.on('rename', async (file, oldPath) => {
+        // Folder renames must also rewrite entries for descendants; Obsidian
+        // does not guarantee per-child rename events.
+        const prefix = oldPath + '/';
+        let changed = false;
+        for (const entry of this.settings.fileColors) {
+          if (entry.path === oldPath) {
+            entry.path = file.path;
+            changed = true;
+          } else if (entry.path.startsWith(prefix)) {
+            entry.path = file.path + '/' + entry.path.slice(prefix.length);
+            changed = true;
+          }
         }
+        if (changed) await this.saveSettings();
+        this.debouncedUpdate();
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on('delete', async (file) => {
+        const prefix = file.path + '/';
+        const before = this.settings.fileColors.length;
+        this.settings.fileColors = this.settings.fileColors.filter(
+          e => e.path !== file.path && !e.path.startsWith(prefix)
+        );
+        if (this.settings.fileColors.length !== before) await this.saveSettings();
+        this.debouncedUpdate();
       })
     );
 
     this.registerEvent(
       this.app.metadataCache.on('changed', () => {
-        this.updateStyles();
+        if (this.settings.yamlRules.length === 0) return;
+        this.debouncedUpdate();
       })
     );
 
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
-        this.updateTabStyles();
+        this.applyTabStyles();
       })
     );
 
@@ -80,13 +112,10 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
   }
 
   onunload() {
+    this.scheduleSaveAndUpdate.run();
+    this.debouncedUpdate.cancel();
     this.styleEl.remove();
-    document.querySelectorAll('.dffh-tab-styled').forEach(el => {
-      const htmlEl = el as HTMLElement;
-      htmlEl.style.removeProperty('color');
-      htmlEl.style.removeProperty('background-color');
-      el.classList.remove('dffh-tab-styled');
-    });
+    this.clearTabStyles();
   }
 
   async loadSettings() {
@@ -101,8 +130,29 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
     const hasColor = this.settings.fileColors.some(e => e.path === file.path);
     if (this.settings.colorCombos.length === 0 && !hasColor) return;
 
+    // setSubmenu is an undocumented API; degrade to flat menu items rather
+    // than throwing inside the file-menu builder if Obsidian removes it.
+    const hasSubmenu = typeof (MenuItem.prototype as any)?.setSubmenu === 'function';
+    if (!hasSubmenu) {
+      this.settings.colorCombos.forEach((combo) => {
+        menu.addItem((item: MenuItem) => {
+          item.setTitle(`Color: ${combo.name || 'Unnamed'}`).setSection('dffh-colors').onClick(async () => {
+            await this.setFileColor(file.path, combo.id);
+          });
+        });
+      });
+      if (hasColor) {
+        menu.addItem((item: MenuItem) => {
+          item.setTitle('Clear color').setIcon('x-circle').setSection('dffh-colors').onClick(async () => {
+            await this.clearFileColor(file.path);
+          });
+        });
+      }
+      return;
+    }
+
     menu.addItem((item: MenuItem) => {
-      item.setTitle('Color options').setSection('dffh-colors');
+      item.setTitle('Ff/Fld Color Options').setSection('dffh-colors');
       const submenu = (item as any).setSubmenu() as Menu;
 
       this.settings.colorCombos.forEach((combo) => {
@@ -159,18 +209,25 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
         this.currentHierarchyPaths.add(parts.slice(0, i).join('/'));
       }
     }
-    this.updateStyles();
+    // Paths are kept current on every leaf change so enabling the feature
+    // later works immediately, but styles only need refreshing when enabled.
+    if (this.settings.hierarchyEnabled) this.debouncedUpdate();
   }
 
   updateStyles() {
     const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const safe = (c: string) => (SAFE_COLOR.test(c) ? c : '');
     const colorProps = (font: string, bg: string): string => {
       let s = '';
-      if (font) s += `color:${font}!important;`;
-      if (bg) s += `background-color:${bg}!important;`;
+      if (safe(font)) s += `color:${font}!important;`;
+      if (safe(bg)) s += `background-color:${bg}!important;`;
       return s;
     };
     let css = '';
+
+    const files = this.app.vault.getFiles();
+    const folders = this.getAllFolders();
+    const tabStyles = new Map<string, { font: string; bg: string }>();
 
     // 1. Regex rules — lowest priority
     for (const rule of this.settings.regexRules) {
@@ -181,14 +238,17 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       try { regex = new RegExp(rule.pattern); } catch { continue; }
 
       if (rule.appliesTo !== 'folders') {
-        for (const file of this.app.vault.getFiles()) {
+        for (const file of files) {
           if (regex.test(file.basename)) {
             css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}\n`;
+            if (rule.applyToTab) {
+              tabStyles.set(file.path, { font: safe(rule.fontColor), bg: safe(rule.bgColor) });
+            }
           }
         }
       }
       if (rule.appliesTo !== 'files') {
-        for (const folder of this.getAllFolders()) {
+        for (const folder of folders) {
           if (regex.test(folder.name)) {
             css += `.nav-folder-title[data-path="${esc(folder.path)}"]{${ruleProps}}\n`;
           }
@@ -201,11 +261,16 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       if (!rule.key || !rule.value) continue;
       const ruleProps = colorProps(rule.fontColor, rule.bgColor);
       if (!ruleProps) continue;
-      for (const file of this.app.vault.getFiles()) {
+      const target = rule.value.trim();
+      for (const file of files) {
         const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
         if (!fm) continue;
         const val = fm[rule.key];
-        if (val !== undefined && val !== null && String(val).trim() === rule.value.trim()) {
+        if (val === undefined || val === null) continue;
+        const matches = Array.isArray(val)
+          ? val.some(v => String(v).trim() === target)
+          : String(val).trim() === target;
+        if (matches) {
           css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}\n`;
         }
       }
@@ -220,15 +285,15 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       try { folderRe = new RegExp(rule.folderPattern); } catch { continue; }
       try { fileRe = new RegExp(rule.filePattern); } catch { continue; }
 
-      for (const folder of this.getAllFolders()) {
+      for (const folder of folders) {
         if (!folderRe.test(folder.name)) continue;
-        const children = this.app.vault.getFiles().filter(f => f.parent?.path === folder.path);
         const candidates: { file: TFile; value: number }[] = [];
-        for (const f of children) {
-          const m = fileRe.exec(f.basename);
+        for (const child of folder.children) {
+          if (!(child instanceof TFile)) continue;
+          const m = fileRe.exec(child.basename);
           if (m?.[1] !== undefined) {
             const val = parseFloat(m[1]);
-            if (!isNaN(val)) candidates.push({ file: f, value: val });
+            if (!isNaN(val)) candidates.push({ file: child, value: val });
           }
         }
         if (candidates.length === 0) continue;
@@ -236,6 +301,9 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
           rule.condition === 'max' ? (cur.value > best.value ? cur : best) : (cur.value < best.value ? cur : best)
         );
         css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${condProps}}\n`;
+        if (rule.applyToTab) {
+          tabStyles.set(winner.file.path, { font: safe(rule.fontColor), bg: safe(rule.bgColor) });
+        }
       }
     }
 
@@ -259,68 +327,37 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
     }
 
     this.styleEl.textContent = css;
-    this.updateTabStyles();
+    this.tabStyleMap = tabStyles;
+    this.applyTabStyles();
   }
 
-  updateTabStyles() {
+  private clearTabStyles() {
     document.querySelectorAll('.dffh-tab-styled').forEach(el => {
       const htmlEl = el as HTMLElement;
       htmlEl.style.removeProperty('color');
       htmlEl.style.removeProperty('background-color');
       el.classList.remove('dffh-tab-styled');
     });
+  }
 
-    const tabStyles = new Map<string, { font: string; bg: string }>();
-
-    for (const rule of this.settings.regexRules) {
-      if (!rule.applyToTab || !rule.pattern) continue;
-      let regex: RegExp;
-      try { regex = new RegExp(rule.pattern); } catch { continue; }
-      if (rule.appliesTo !== 'folders') {
-        for (const file of this.app.vault.getFiles()) {
-          if (regex.test(file.basename)) {
-            tabStyles.set(file.path, { font: rule.fontColor, bg: rule.bgColor });
-          }
-        }
-      }
-    }
-
-    for (const rule of this.settings.conditionalRules) {
-      if (!rule.applyToTab || !rule.folderPattern || !rule.filePattern) continue;
-      let folderRe: RegExp, fileRe: RegExp;
-      try { folderRe = new RegExp(rule.folderPattern); } catch { continue; }
-      try { fileRe = new RegExp(rule.filePattern); } catch { continue; }
-      for (const folder of this.getAllFolders()) {
-        if (!folderRe.test(folder.name)) continue;
-        const children = this.app.vault.getFiles().filter(f => f.parent?.path === folder.path);
-        const candidates: { file: TFile; value: number }[] = [];
-        for (const f of children) {
-          const m = fileRe.exec(f.basename);
-          if (m?.[1] !== undefined) {
-            const val = parseFloat(m[1]);
-            if (!isNaN(val)) candidates.push({ file: f, value: val });
-          }
-        }
-        if (candidates.length === 0) continue;
-        const winner = candidates.reduce((best, cur) =>
-          rule.condition === 'max' ? (cur.value > best.value ? cur : best) : (cur.value < best.value ? cur : best)
-        );
-        tabStyles.set(winner.file.path, { font: rule.fontColor, bg: rule.bgColor });
-      }
-    }
-
-    if (tabStyles.size === 0) return;
+  private applyTabStyles() {
+    this.clearTabStyles();
+    if (this.tabStyleMap.size === 0) return;
 
     this.app.workspace.iterateAllLeaves(leaf => {
       const file = (leaf.view as any).file as TFile | undefined;
       if (!file) return;
-      const style = tabStyles.get(file.path);
+      const style = this.tabStyleMap.get(file.path);
       if (!style) return;
+      // Prefer the inner title element so Obsidian's active/inactive tab
+      // styling stays visible; tabHeaderEl/tabHeaderInnerTitleEl are
+      // undocumented APIs, hence the guards.
       const tabEl = (leaf as any).tabHeaderEl as HTMLElement | undefined;
-      if (!tabEl) return;
-      if (style.font) tabEl.style.setProperty('color', style.font, 'important');
-      if (style.bg) tabEl.style.setProperty('background-color', style.bg, 'important');
-      tabEl.classList.add('dffh-tab-styled');
+      const target = ((leaf as any).tabHeaderInnerTitleEl as HTMLElement | undefined) ?? tabEl;
+      if (!target) return;
+      if (style.font) target.style.setProperty('color', style.font);
+      if (style.bg) target.style.setProperty('background-color', style.bg);
+      target.classList.add('dffh-tab-styled');
     });
   }
 
