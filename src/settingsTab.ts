@@ -256,6 +256,19 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         this.plugin.updateStyles();
       });
 
+      const tabWrap = row.createDiv('hh-color-wrap');
+      tabWrap.createEl('span', { text: 'Tab', cls: 'hh-color-label' });
+      const tabChk = tabWrap.createEl('input');
+      tabChk.type = 'checkbox';
+      tabChk.checked = !!rule.applyToTab;
+      tabChk.classList.add('hh-color-toggle');
+      tabChk.title = 'Apply formatting to open tab header';
+      tabChk.addEventListener('change', async () => {
+        rule.applyToTab = tabChk.checked;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+
       const del = row.createEl('button', { cls: 'hh-btn-delete' });
       del.textContent = '×';
       del.setAttribute('aria-label', 'Delete rule');
@@ -414,6 +427,19 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
 
       this.addColorInput(row2, 'BG', rule.bgColor, async (v) => {
         rule.bgColor = v;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
+
+      const tabWrap = row2.createDiv('hh-color-wrap');
+      tabWrap.createEl('span', { text: 'Tab', cls: 'hh-color-label' });
+      const tabChk = tabWrap.createEl('input');
+      tabChk.type = 'checkbox';
+      tabChk.checked = !!rule.applyToTab;
+      tabChk.classList.add('hh-color-toggle');
+      tabChk.title = 'Apply formatting to open tab header';
+      tabChk.addEventListener('change', async () => {
+        rule.applyToTab = tabChk.checked;
         await this.plugin.saveSettings();
         this.plugin.updateStyles();
       });

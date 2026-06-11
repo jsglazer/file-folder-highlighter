@@ -17,6 +17,7 @@ export interface RegexRule {
   fontColor: string;  // "" = use Obsidian default
   bgColor: string;    // "" = use Obsidian default
   appliesTo: 'files' | 'folders' | 'both';
+  applyToTab?: boolean;
 }
 
 export interface ConditionalRule {
@@ -27,6 +28,7 @@ export interface ConditionalRule {
   folderPattern: string;
   filePattern: string;
   condition: 'max' | 'min';
+  applyToTab?: boolean;
 }
 
 export interface YamlRule {

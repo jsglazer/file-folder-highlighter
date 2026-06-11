@@ -67,6 +67,12 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
       })
     );
 
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        this.updateTabStyles();
+      })
+    );
+
     this.app.workspace.onLayoutReady(() => {
       this.updateHierarchy();
       this.updateStyles();
@@ -75,6 +81,12 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 
   onunload() {
     this.styleEl.remove();
+    document.querySelectorAll('.dffh-tab-styled').forEach(el => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.removeProperty('color');
+      htmlEl.style.removeProperty('background-color');
+      el.classList.remove('dffh-tab-styled');
+    });
   }
 
   async loadSettings() {
@@ -247,6 +259,69 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
     }
 
     this.styleEl.textContent = css;
+    this.updateTabStyles();
+  }
+
+  updateTabStyles() {
+    document.querySelectorAll('.dffh-tab-styled').forEach(el => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.removeProperty('color');
+      htmlEl.style.removeProperty('background-color');
+      el.classList.remove('dffh-tab-styled');
+    });
+
+    const tabStyles = new Map<string, { font: string; bg: string }>();
+
+    for (const rule of this.settings.regexRules) {
+      if (!rule.applyToTab || !rule.pattern) continue;
+      let regex: RegExp;
+      try { regex = new RegExp(rule.pattern); } catch { continue; }
+      if (rule.appliesTo !== 'folders') {
+        for (const file of this.app.vault.getFiles()) {
+          if (regex.test(file.basename)) {
+            tabStyles.set(file.path, { font: rule.fontColor, bg: rule.bgColor });
+          }
+        }
+      }
+    }
+
+    for (const rule of this.settings.conditionalRules) {
+      if (!rule.applyToTab || !rule.folderPattern || !rule.filePattern) continue;
+      let folderRe: RegExp, fileRe: RegExp;
+      try { folderRe = new RegExp(rule.folderPattern); } catch { continue; }
+      try { fileRe = new RegExp(rule.filePattern); } catch { continue; }
+      for (const folder of this.getAllFolders()) {
+        if (!folderRe.test(folder.name)) continue;
+        const children = this.app.vault.getFiles().filter(f => f.parent?.path === folder.path);
+        const candidates: { file: TFile; value: number }[] = [];
+        for (const f of children) {
+          const m = fileRe.exec(f.basename);
+          if (m?.[1] !== undefined) {
+            const val = parseFloat(m[1]);
+            if (!isNaN(val)) candidates.push({ file: f, value: val });
+          }
+        }
+        if (candidates.length === 0) continue;
+        const winner = candidates.reduce((best, cur) =>
+          rule.condition === 'max' ? (cur.value > best.value ? cur : best) : (cur.value < best.value ? cur : best)
+        );
+        tabStyles.set(winner.file.path, { font: rule.fontColor, bg: rule.bgColor });
+      }
+    }
+
+    if (tabStyles.size === 0) return;
+
+    this.app.workspace.iterateAllLeaves(leaf => {
+      const file = (leaf.view as any).file as TFile | undefined;
+      if (!file) return;
+      const style = tabStyles.get(file.path);
+      if (!style) return;
+      const tabEl = (leaf as any).tabHeaderEl as HTMLElement | undefined;
+      if (!tabEl) return;
+      if (style.font) tabEl.style.setProperty('color', style.font, 'important');
+      if (style.bg) tabEl.style.setProperty('background-color', style.bg, 'important');
+      tabEl.classList.add('dffh-tab-styled');
+    });
   }
 
   private getAllFolders(): TFolder[] {

@@ -253,6 +253,18 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         await this.plugin.saveSettings();
         this.plugin.updateStyles();
       });
+      const tabWrap = row.createDiv("hh-color-wrap");
+      tabWrap.createEl("span", { text: "Tab", cls: "hh-color-label" });
+      const tabChk = tabWrap.createEl("input");
+      tabChk.type = "checkbox";
+      tabChk.checked = !!rule.applyToTab;
+      tabChk.classList.add("hh-color-toggle");
+      tabChk.title = "Apply formatting to open tab header";
+      tabChk.addEventListener("change", async () => {
+        rule.applyToTab = tabChk.checked;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
       const del = row.createEl("button", { cls: "hh-btn-delete" });
       del.textContent = "\xD7";
       del.setAttribute("aria-label", "Delete rule");
@@ -388,6 +400,18 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         await this.plugin.saveSettings();
         this.plugin.updateStyles();
       });
+      const tabWrap = row2.createDiv("hh-color-wrap");
+      tabWrap.createEl("span", { text: "Tab", cls: "hh-color-label" });
+      const tabChk = tabWrap.createEl("input");
+      tabChk.type = "checkbox";
+      tabChk.checked = !!rule.applyToTab;
+      tabChk.classList.add("hh-color-toggle");
+      tabChk.title = "Apply formatting to open tab header";
+      tabChk.addEventListener("change", async () => {
+        rule.applyToTab = tabChk.checked;
+        await this.plugin.saveSettings();
+        this.plugin.updateStyles();
+      });
     });
   }
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -490,6 +514,11 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         this.updateStyles();
       })
     );
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        this.updateTabStyles();
+      })
+    );
     this.app.workspace.onLayoutReady(() => {
       this.updateHierarchy();
       this.updateStyles();
@@ -497,6 +526,12 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
   }
   onunload() {
     this.styleEl.remove();
+    document.querySelectorAll(".dffh-tab-styled").forEach((el) => {
+      const htmlEl = el;
+      htmlEl.style.removeProperty("color");
+      htmlEl.style.removeProperty("background-color");
+      el.classList.remove("dffh-tab-styled");
+    });
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -509,7 +544,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
     if (this.settings.colorCombos.length === 0 && !hasColor)
       return;
     menu.addItem((item) => {
-      item.setTitle("Ff/Fld Color Options").setSection("dffh-colors");
+      item.setTitle("Color options").setSection("dffh-colors");
       const submenu = item.setSubmenu();
       this.settings.colorCombos.forEach((combo) => {
         submenu.addItem((subItem) => {
@@ -685,6 +720,89 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
 `;
     }
     this.styleEl.textContent = css;
+    this.updateTabStyles();
+  }
+  updateTabStyles() {
+    document.querySelectorAll(".dffh-tab-styled").forEach((el) => {
+      const htmlEl = el;
+      htmlEl.style.removeProperty("color");
+      htmlEl.style.removeProperty("background-color");
+      el.classList.remove("dffh-tab-styled");
+    });
+    const tabStyles = /* @__PURE__ */ new Map();
+    for (const rule of this.settings.regexRules) {
+      if (!rule.applyToTab || !rule.pattern)
+        continue;
+      let regex;
+      try {
+        regex = new RegExp(rule.pattern);
+      } catch (e) {
+        continue;
+      }
+      if (rule.appliesTo !== "folders") {
+        for (const file of this.app.vault.getFiles()) {
+          if (regex.test(file.basename)) {
+            tabStyles.set(file.path, { font: rule.fontColor, bg: rule.bgColor });
+          }
+        }
+      }
+    }
+    for (const rule of this.settings.conditionalRules) {
+      if (!rule.applyToTab || !rule.folderPattern || !rule.filePattern)
+        continue;
+      let folderRe, fileRe;
+      try {
+        folderRe = new RegExp(rule.folderPattern);
+      } catch (e) {
+        continue;
+      }
+      try {
+        fileRe = new RegExp(rule.filePattern);
+      } catch (e) {
+        continue;
+      }
+      for (const folder of this.getAllFolders()) {
+        if (!folderRe.test(folder.name))
+          continue;
+        const children = this.app.vault.getFiles().filter((f) => {
+          var _a;
+          return ((_a = f.parent) == null ? void 0 : _a.path) === folder.path;
+        });
+        const candidates = [];
+        for (const f of children) {
+          const m = fileRe.exec(f.basename);
+          if ((m == null ? void 0 : m[1]) !== void 0) {
+            const val = parseFloat(m[1]);
+            if (!isNaN(val))
+              candidates.push({ file: f, value: val });
+          }
+        }
+        if (candidates.length === 0)
+          continue;
+        const winner = candidates.reduce(
+          (best, cur) => rule.condition === "max" ? cur.value > best.value ? cur : best : cur.value < best.value ? cur : best
+        );
+        tabStyles.set(winner.file.path, { font: rule.fontColor, bg: rule.bgColor });
+      }
+    }
+    if (tabStyles.size === 0)
+      return;
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const file = leaf.view.file;
+      if (!file)
+        return;
+      const style = tabStyles.get(file.path);
+      if (!style)
+        return;
+      const tabEl = leaf.tabHeaderEl;
+      if (!tabEl)
+        return;
+      if (style.font)
+        tabEl.style.setProperty("color", style.font, "important");
+      if (style.bg)
+        tabEl.style.setProperty("background-color", style.bg, "important");
+      tabEl.classList.add("dffh-tab-styled");
+    });
   }
   getAllFolders() {
     return this.app.vault.getAllLoadedFiles().filter((f) => f instanceof import_obsidian2.TFolder && f.path !== "/" && f.path !== "");
