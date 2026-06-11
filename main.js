@@ -40,9 +40,10 @@ var DEFAULT_SETTINGS = {
 // src/settingsTab.ts
 var import_obsidian = require("obsidian");
 function genId() {
-  const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === "function")
-    return c.randomUUID();
+  var _a;
+  if (typeof ((_a = window.crypto) == null ? void 0 : _a.randomUUID) === "function") {
+    return window.crypto.randomUUID();
+  }
   return Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 }
 var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.PluginSettingTab {
@@ -53,7 +54,7 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Color combinations" });
+    new import_obsidian.Setting(containerEl).setName("Color combinations").setHeading();
     containerEl.createEl("p", {
       text: "Named color combinations you can assign to files and folders via right-click. Leave font or background unset to keep the Obsidian default.",
       cls: "setting-item-description"
@@ -73,7 +74,7 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         this.plugin.updateStyles();
       })
     );
-    containerEl.createEl("h2", { text: "Hierarchy highlighting" });
+    new import_obsidian.Setting(containerEl).setName("Hierarchy highlighting").setHeading();
     new import_obsidian.Setting(containerEl).setName("Enable").setDesc("Highlight all ancestor folders of the currently active file.").addToggle(
       (t) => t.setValue(this.plugin.settings.hierarchyEnabled).onChange(async (v) => {
         this.plugin.settings.hierarchyEnabled = v;
@@ -91,7 +92,7 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
       this.plugin.settings.hierarchyBgColor = v;
       this.plugin.scheduleSaveAndUpdate();
     });
-    containerEl.createEl("h2", { text: "Regex highlighting rules" });
+    new import_obsidian.Setting(containerEl).setName("Regex highlighting rules").setHeading();
     containerEl.createEl("p", {
       text: "Apply colors to files or folders whose names match a regular expression.",
       cls: "setting-item-description"
@@ -112,7 +113,7 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         this.renderRules(rulesEl);
       })
     );
-    containerEl.createEl("h2", { text: "YAML frontmatter rules" });
+    new import_obsidian.Setting(containerEl).setName("YAML frontmatter rules").setHeading();
     containerEl.createEl("p", {
       text: "Apply colors to files whose frontmatter contains a specific key/value pair (e.g. status: Refine). Files only \u2014 folders have no frontmatter.",
       cls: "setting-item-description"
@@ -133,7 +134,7 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         this.renderYamlRules(yamlRulesEl);
       })
     );
-    containerEl.createEl("h2", { text: "Conditional highlighting rules" });
+    new import_obsidian.Setting(containerEl).setName("Conditional highlighting rules").setHeading();
     containerEl.createEl("p", {
       text: "Highlight the file with the highest or lowest numeric value in folders matching a name pattern.",
       cls: "setting-item-description"
@@ -170,10 +171,7 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
     this.plugin.settings.colorCombos.forEach((combo, i) => {
       const row = container.createDiv("hh-row");
       const preview = createSpan({ cls: "hh-preview", text: combo.name || "Preview" });
-      if (combo.fontColor)
-        preview.style.color = combo.fontColor;
-      if (combo.bgColor)
-        preview.style.backgroundColor = combo.bgColor;
+      preview.setCssStyles({ color: combo.fontColor || "", backgroundColor: combo.bgColor || "" });
       const nameInput = row.createEl("input", { cls: "hh-input hh-name-input", placeholder: "Name" });
       nameInput.type = "text";
       nameInput.value = combo.name;
@@ -184,12 +182,12 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
       });
       this.addColorInput(row, "Font", combo.fontColor, (v) => {
         combo.fontColor = v;
-        preview.style.color = v;
+        preview.setCssStyles({ color: v });
         this.plugin.scheduleSaveAndUpdate();
       });
       this.addColorInput(row, "BG", combo.bgColor, (v) => {
         combo.bgColor = v;
-        preview.style.backgroundColor = v;
+        preview.setCssStyles({ backgroundColor: v });
         this.plugin.scheduleSaveAndUpdate();
       });
       row.appendChild(preview);
@@ -234,10 +232,9 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         opt.textContent = label;
       }
       select.value = rule.appliesTo;
-      select.addEventListener("change", async () => {
+      select.addEventListener("change", () => {
         rule.appliesTo = select.value;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.persist();
       });
       this.addColorInput(row, "Font", rule.fontColor, (v) => {
         rule.fontColor = v;
@@ -353,10 +350,9 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
         opt.textContent = label;
       }
       condSelect.value = rule.condition;
-      condSelect.addEventListener("change", async () => {
+      condSelect.addEventListener("change", () => {
         rule.condition = condSelect.value;
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.persist();
       });
       this.addColorInput(row2, "Font", rule.fontColor, (v) => {
         rule.fontColor = v;
@@ -370,6 +366,11 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
     });
   }
   // ── Helpers ─────────────────────────────────────────────────────────────────
+  /** Immediate save + refresh for discrete changes (selects, checkboxes). */
+  persist() {
+    this.plugin.updateStyles();
+    this.plugin.saveSettings().catch((e) => console.error(e));
+  }
   addColorInput(parent, label, value, onChange) {
     const wrap = parent.createDiv("hh-color-wrap");
     if (label)
@@ -383,15 +384,10 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
     const input = wrap.createEl("input", { cls: "hh-color-input" });
     input.type = "color";
     input.value = isSet ? value : "#ffffff";
-    input.style.visibility = isSet ? "visible" : "hidden";
+    input.toggleClass("hh-hidden", !isSet);
     checkbox.addEventListener("change", () => {
-      if (checkbox.checked) {
-        input.style.visibility = "visible";
-        onChange(input.value);
-      } else {
-        input.style.visibility = "hidden";
-        onChange("");
-      }
+      input.toggleClass("hh-hidden", !checkbox.checked);
+      onChange(checkbox.checked ? input.value : "");
     });
     input.addEventListener("input", () => {
       if (checkbox.checked)
@@ -406,10 +402,9 @@ var DynamicFileFolderHighlighterSettingTab = class extends import_obsidian.Plugi
     chk.checked = !!rule.applyToTab;
     chk.classList.add("hh-color-toggle");
     chk.title = "Apply formatting to open tab header";
-    chk.addEventListener("change", async () => {
+    chk.addEventListener("change", () => {
       rule.applyToTab = chk.checked;
-      await this.plugin.saveSettings();
-      this.plugin.updateStyles();
+      this.persist();
     });
   }
   addDeleteButton(parent, ariaLabel, onDelete) {
@@ -452,10 +447,18 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
   constructor() {
     super(...arguments);
     this.currentHierarchyPaths = /* @__PURE__ */ new Set();
-    // Computed as a byproduct of updateStyles(); applyTabStyles() reads from it
-    // so layout-change handling never has to rescan the vault.
+    // Path → style maps computed by updateStyles(); applyStyles() reads them so
+    // re-applying after a DOM rebuild never has to re-evaluate the rules.
+    this.navFileStyles = /* @__PURE__ */ new Map();
+    this.navFolderStyles = /* @__PURE__ */ new Map();
     this.tabStyleMap = /* @__PURE__ */ new Map();
+    // Elements we've applied inline styles to, tracked so teardown is exact and
+    // works across popout windows without scanning any document.
+    this.styledEls = /* @__PURE__ */ new Set();
+    this.explorerObserver = null;
     this.debouncedUpdate = (0, import_obsidian2.debounce)(() => this.updateStyles(), 250, true);
+    // Re-apply (no rule re-evaluation) when the file-explorer DOM changes.
+    this.debouncedApply = (0, import_obsidian2.debounce)(() => this.applyStyles(), 50, true);
     /** Debounced save + refresh for rapid-fire settings inputs (typing, color drag). */
     this.scheduleSaveAndUpdate = (0, import_obsidian2.debounce)(() => {
       this.saveSettings().catch(console.error);
@@ -464,9 +467,6 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
   }
   async onload() {
     await this.loadSettings();
-    this.styleEl = document.createElement("style");
-    this.styleEl.id = "dffh-styles";
-    document.head.appendChild(this.styleEl);
     this.addSettingTab(new DynamicFileFolderHighlighterSettingTab(this.app, this));
     this.addCommand({
       id: "toggle-hierarchy-highlighting",
@@ -532,32 +532,39 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
-        this.applyTabStyles();
+        this.setupExplorerObserver();
+        this.applyStyles();
       })
     );
     this.app.workspace.onLayoutReady(() => {
       this.updateHierarchy();
       this.updateStyles();
+      this.setupExplorerObserver();
     });
   }
   onunload() {
-    this.scheduleSaveAndUpdate.run();
+    var _a;
     this.debouncedUpdate.cancel();
-    this.styleEl.remove();
-    this.clearTabStyles();
+    this.debouncedApply.cancel();
+    this.scheduleSaveAndUpdate.cancel();
+    (_a = this.explorerObserver) == null ? void 0 : _a.disconnect();
+    this.explorerObserver = null;
+    this.clearAppliedStyles();
+    void this.saveSettings();
   }
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data != null ? data : {});
   }
   async saveSettings() {
     await this.saveData(this.settings);
   }
   buildColorMenu(menu, file) {
-    var _a;
     const hasColor = this.settings.fileColors.some((e) => e.path === file.path);
     if (this.settings.colorCombos.length === 0 && !hasColor)
       return;
-    const hasSubmenu = typeof ((_a = import_obsidian2.MenuItem.prototype) == null ? void 0 : _a.setSubmenu) === "function";
+    const proto = import_obsidian2.MenuItem.prototype;
+    const hasSubmenu = typeof proto.setSubmenu === "function";
     if (!hasSubmenu) {
       this.settings.colorCombos.forEach((combo) => {
         menu.addItem((item) => {
@@ -580,19 +587,18 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       const submenu = item.setSubmenu();
       this.settings.colorCombos.forEach((combo) => {
         submenu.addItem((subItem) => {
-          const frag = document.createDocumentFragment();
-          const span = document.createElement("span");
-          span.textContent = combo.name || "Unnamed";
-          if (combo.fontColor || combo.bgColor) {
-            if (combo.fontColor)
-              span.style.color = combo.fontColor;
-            if (combo.bgColor)
-              span.style.backgroundColor = combo.bgColor;
-            span.style.padding = "1px 8px";
-            span.style.borderRadius = "3px";
-          }
-          frag.appendChild(span);
-          subItem.setTitle(frag).onClick(async () => {
+          const title = createFragment((frag) => {
+            const span = frag.createSpan({ text: combo.name || "Unnamed" });
+            if (combo.fontColor || combo.bgColor) {
+              span.setCssStyles({
+                padding: "1px 8px",
+                borderRadius: "3px",
+                ...combo.fontColor ? { color: combo.fontColor } : {},
+                ...combo.bgColor ? { backgroundColor: combo.bgColor } : {}
+              });
+            }
+          });
+          subItem.setTitle(title).onClick(async () => {
             await this.setFileColor(file.path, combo.id);
           });
         });
@@ -635,25 +641,17 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
   }
   updateStyles() {
     var _a;
-    const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const safe = (c) => SAFE_COLOR.test(c) ? c : "";
-    const colorProps = (font, bg) => {
-      let s = "";
-      if (safe(font))
-        s += `color:${font}!important;`;
-      if (safe(bg))
-        s += `background-color:${bg}!important;`;
-      return s;
-    };
-    let css = "";
+    const navFile = /* @__PURE__ */ new Map();
+    const navFolder = /* @__PURE__ */ new Map();
+    const tabStyles = /* @__PURE__ */ new Map();
     const files = this.app.vault.getFiles();
     const folders = this.getAllFolders();
-    const tabStyles = /* @__PURE__ */ new Map();
     for (const rule of this.settings.regexRules) {
       if (!rule.pattern)
         continue;
-      const ruleProps = colorProps(rule.fontColor, rule.bgColor);
-      if (!ruleProps)
+      const font = safe(rule.fontColor), bg = safe(rule.bgColor);
+      if (!font && !bg)
         continue;
       let regex;
       try {
@@ -661,33 +659,31 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       } catch (e) {
         continue;
       }
+      const style = { font, bg };
       if (rule.appliesTo !== "folders") {
         for (const file of files) {
           if (regex.test(file.basename)) {
-            css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}
-`;
-            if (rule.applyToTab) {
-              tabStyles.set(file.path, { font: safe(rule.fontColor), bg: safe(rule.bgColor) });
-            }
+            navFile.set(file.path, style);
+            if (rule.applyToTab)
+              tabStyles.set(file.path, style);
           }
         }
       }
       if (rule.appliesTo !== "files") {
         for (const folder of folders) {
-          if (regex.test(folder.name)) {
-            css += `.nav-folder-title[data-path="${esc(folder.path)}"]{${ruleProps}}
-`;
-          }
+          if (regex.test(folder.name))
+            navFolder.set(folder.path, style);
         }
       }
     }
     for (const rule of this.settings.yamlRules) {
       if (!rule.key || !rule.value)
         continue;
-      const ruleProps = colorProps(rule.fontColor, rule.bgColor);
-      if (!ruleProps)
+      const font = safe(rule.fontColor), bg = safe(rule.bgColor);
+      if (!font && !bg)
         continue;
       const target = rule.value.trim();
+      const style = { font, bg };
       for (const file of files) {
         const fm = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
         if (!fm)
@@ -696,17 +692,15 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         if (val === void 0 || val === null)
           continue;
         const matches = Array.isArray(val) ? val.some((v) => String(v).trim() === target) : String(val).trim() === target;
-        if (matches) {
-          css += `.nav-file-title[data-path="${esc(file.path)}"]{${ruleProps}}
-`;
-        }
+        if (matches)
+          navFile.set(file.path, style);
       }
     }
     for (const rule of this.settings.conditionalRules) {
       if (!rule.folderPattern || !rule.filePattern)
         continue;
-      const condProps = colorProps(rule.fontColor, rule.bgColor);
-      if (!condProps)
+      const font = safe(rule.fontColor), bg = safe(rule.bgColor);
+      if (!font && !bg)
         continue;
       let folderRe, fileRe;
       try {
@@ -719,6 +713,7 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       } catch (e) {
         continue;
       }
+      const style = { font, bg };
       for (const folder of folders) {
         if (!folderRe.test(folder.name))
           continue;
@@ -738,46 +733,95 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
         const winner = candidates.reduce(
           (best, cur) => rule.condition === "max" ? cur.value > best.value ? cur : best : cur.value < best.value ? cur : best
         );
-        css += `.nav-file-title[data-path="${esc(winner.file.path)}"]{${condProps}}
-`;
-        if (rule.applyToTab) {
-          tabStyles.set(winner.file.path, { font: safe(rule.fontColor), bg: safe(rule.bgColor) });
-        }
+        navFile.set(winner.file.path, style);
+        if (rule.applyToTab)
+          tabStyles.set(winner.file.path, style);
       }
     }
     if (this.settings.hierarchyEnabled) {
-      const hierProps = colorProps(this.settings.hierarchyFontColor, this.settings.hierarchyBgColor);
-      if (hierProps) {
-        for (const path of this.currentHierarchyPaths) {
-          css += `.nav-folder-title[data-path="${esc(path)}"]{${hierProps}}
-`;
-        }
+      const font = safe(this.settings.hierarchyFontColor), bg = safe(this.settings.hierarchyBgColor);
+      if (font || bg) {
+        const style = { font, bg };
+        for (const path of this.currentHierarchyPaths)
+          navFolder.set(path, style);
       }
     }
     for (const entry of this.settings.fileColors) {
       const combo = this.settings.colorCombos.find((c) => c.id === entry.comboId);
       if (!combo)
         continue;
-      const entryProps = colorProps(combo.fontColor, combo.bgColor);
-      if (!entryProps)
+      const font = safe(combo.fontColor), bg = safe(combo.bgColor);
+      if (!font && !bg)
         continue;
-      css += `.nav-file-title[data-path="${esc(entry.path)}"],.nav-folder-title[data-path="${esc(entry.path)}"]{${entryProps}}
-`;
+      const style = { font, bg };
+      navFile.set(entry.path, style);
+      navFolder.set(entry.path, style);
     }
-    this.styleEl.textContent = css;
+    this.navFileStyles = navFile;
+    this.navFolderStyles = navFolder;
     this.tabStyleMap = tabStyles;
+    this.applyStyles();
+  }
+  getFileExplorerContainers() {
+    return this.app.workspace.getLeavesOfType("file-explorer").map((l) => l.view.containerEl);
+  }
+  setupExplorerObserver() {
+    var _a;
+    (_a = this.explorerObserver) == null ? void 0 : _a.disconnect();
+    const containers = this.getFileExplorerContainers();
+    if (containers.length === 0) {
+      this.explorerObserver = null;
+      return;
+    }
+    this.explorerObserver = new MutationObserver(() => this.debouncedApply());
+    for (const c of containers) {
+      this.explorerObserver.observe(c, { childList: true, subtree: true });
+    }
+  }
+  applyStyles() {
+    this.clearAppliedStyles();
+    this.applyNavStyles();
     this.applyTabStyles();
   }
-  clearTabStyles() {
-    document.querySelectorAll(".dffh-tab-styled").forEach((el) => {
-      const htmlEl = el;
-      htmlEl.style.removeProperty("color");
-      htmlEl.style.removeProperty("background-color");
-      el.classList.remove("dffh-tab-styled");
-    });
+  applyTo(el, style) {
+    if (style.font)
+      el.style.setProperty("color", style.font, "important");
+    if (style.bg)
+      el.style.setProperty("background-color", style.bg, "important");
+    el.addClass("dffh-styled");
+    this.styledEls.add(el);
+  }
+  clearAppliedStyles() {
+    for (const el of this.styledEls) {
+      el.style.removeProperty("color");
+      el.style.removeProperty("background-color");
+      el.removeClass("dffh-styled");
+    }
+    this.styledEls.clear();
+  }
+  applyNavStyles() {
+    if (this.navFileStyles.size === 0 && this.navFolderStyles.size === 0)
+      return;
+    for (const container of this.getFileExplorerContainers()) {
+      container.querySelectorAll(".nav-file-title").forEach((el) => {
+        const path = el.getAttribute("data-path");
+        if (!path)
+          return;
+        const style = this.navFileStyles.get(path);
+        if (style)
+          this.applyTo(el, style);
+      });
+      container.querySelectorAll(".nav-folder-title").forEach((el) => {
+        const path = el.getAttribute("data-path");
+        if (!path)
+          return;
+        const style = this.navFolderStyles.get(path);
+        if (style)
+          this.applyTo(el, style);
+      });
+    }
   }
   applyTabStyles() {
-    this.clearTabStyles();
     if (this.tabStyleMap.size === 0)
       return;
     this.app.workspace.iterateAllLeaves((leaf) => {
@@ -788,15 +832,11 @@ var DynamicFileFolderHighlighterPlugin = class extends import_obsidian2.Plugin {
       const style = this.tabStyleMap.get(file.path);
       if (!style)
         return;
-      const tabEl = leaf.tabHeaderEl;
-      const target = (_a = leaf.tabHeaderInnerTitleEl) != null ? _a : tabEl;
+      const tl = leaf;
+      const target = (_a = tl.tabHeaderInnerTitleEl) != null ? _a : tl.tabHeaderEl;
       if (!target)
         return;
-      if (style.font)
-        target.style.setProperty("color", style.font, "important");
-      if (style.bg)
-        target.style.setProperty("background-color", style.bg, "important");
-      target.classList.add("dffh-tab-styled");
+      this.applyTo(target, style);
     });
   }
   getAllFolders() {

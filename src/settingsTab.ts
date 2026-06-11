@@ -3,8 +3,9 @@ import DynamicFileFolderHighlighterPlugin from './main';
 import { ColorCombo, RegexRule, YamlRule, ConditionalRule } from './settings';
 
 function genId(): string {
-  const c = globalThis.crypto as Crypto | undefined;
-  if (c && typeof (c as any).randomUUID === 'function') return (c as any).randomUUID();
+  if (typeof window.crypto?.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
   return Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 }
 
@@ -21,7 +22,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // ── Color Combinations ────────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'Color combinations' });
+    new Setting(containerEl).setName('Color combinations').setHeading();
     containerEl.createEl('p', {
       text: 'Named color combinations you can assign to files and folders via right-click. Leave font or background unset to keep the Obsidian default.',
       cls: 'setting-item-description',
@@ -44,7 +45,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       );
 
     // ── Hierarchy Highlighting ────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'Hierarchy highlighting' });
+    new Setting(containerEl).setName('Hierarchy highlighting').setHeading();
 
     new Setting(containerEl)
       .setName('Enable')
@@ -75,7 +76,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     });
 
     // ── Regex Rules ───────────────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'Regex highlighting rules' });
+    new Setting(containerEl).setName('Regex highlighting rules').setHeading();
     containerEl.createEl('p', {
       text: 'Apply colors to files or folders whose names match a regular expression.',
       cls: 'setting-item-description',
@@ -97,7 +98,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       );
 
     // ── YAML Rules ───────────────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'YAML frontmatter rules' });
+    new Setting(containerEl).setName('YAML frontmatter rules').setHeading();
     containerEl.createEl('p', {
       text: 'Apply colors to files whose frontmatter contains a specific key/value pair (e.g. status: Refine). Files only — folders have no frontmatter.',
       cls: 'setting-item-description',
@@ -119,7 +120,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       );
 
     // ── Conditional Rules ─────────────────────────────────────────────────────
-    containerEl.createEl('h2', { text: 'Conditional highlighting rules' });
+    new Setting(containerEl).setName('Conditional highlighting rules').setHeading();
     containerEl.createEl('p', {
       text: 'Highlight the file with the highest or lowest numeric value in folders matching a name pattern.',
       cls: 'setting-item-description',
@@ -162,8 +163,7 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
       // Created detached and appended later so listeners below can close over
       // it while it still renders after the color inputs.
       const preview = createSpan({ cls: 'hh-preview', text: combo.name || 'Preview' });
-      if (combo.fontColor) preview.style.color = combo.fontColor;
-      if (combo.bgColor) preview.style.backgroundColor = combo.bgColor;
+      preview.setCssStyles({ color: combo.fontColor || '', backgroundColor: combo.bgColor || '' });
 
       const nameInput = row.createEl('input', { cls: 'hh-input hh-name-input', placeholder: 'Name' });
       nameInput.type = 'text';
@@ -176,13 +176,13 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
 
       this.addColorInput(row, 'Font', combo.fontColor, (v) => {
         combo.fontColor = v;
-        preview.style.color = v;
+        preview.setCssStyles({ color: v });
         this.plugin.scheduleSaveAndUpdate();
       });
 
       this.addColorInput(row, 'BG', combo.bgColor, (v) => {
         combo.bgColor = v;
-        preview.style.backgroundColor = v;
+        preview.setCssStyles({ backgroundColor: v });
         this.plugin.scheduleSaveAndUpdate();
       });
 
@@ -236,10 +236,9 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         opt.textContent = label;
       }
       select.value = rule.appliesTo;
-      select.addEventListener('change', async () => {
+      select.addEventListener('change', () => {
         rule.appliesTo = select.value as 'files' | 'folders' | 'both';
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.persist();
       });
 
       this.addColorInput(row, 'Font', rule.fontColor, (v) => {
@@ -383,10 +382,9 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
         opt.textContent = label;
       }
       condSelect.value = rule.condition;
-      condSelect.addEventListener('change', async () => {
+      condSelect.addEventListener('change', () => {
         rule.condition = condSelect.value as 'max' | 'min';
-        await this.plugin.saveSettings();
-        this.plugin.updateStyles();
+        this.persist();
       });
 
       this.addColorInput(row2, 'Font', rule.fontColor, (v) => {
@@ -404,6 +402,12 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  /** Immediate save + refresh for discrete changes (selects, checkboxes). */
+  private persist(): void {
+    this.plugin.updateStyles();
+    this.plugin.saveSettings().catch(e => console.error(e));
+  }
 
   private addColorInput(
     parent: HTMLElement,
@@ -425,16 +429,11 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     const input = wrap.createEl('input', { cls: 'hh-color-input' });
     input.type = 'color';
     input.value = isSet ? value : '#ffffff';
-    input.style.visibility = isSet ? 'visible' : 'hidden';
+    input.toggleClass('hh-hidden', !isSet);
 
     checkbox.addEventListener('change', () => {
-      if (checkbox.checked) {
-        input.style.visibility = 'visible';
-        onChange(input.value);
-      } else {
-        input.style.visibility = 'hidden';
-        onChange('');
-      }
+      input.toggleClass('hh-hidden', !checkbox.checked);
+      onChange(checkbox.checked ? input.value : '');
     });
 
     input.addEventListener('input', () => {
@@ -450,10 +449,9 @@ export class DynamicFileFolderHighlighterSettingTab extends PluginSettingTab {
     chk.checked = !!rule.applyToTab;
     chk.classList.add('hh-color-toggle');
     chk.title = 'Apply formatting to open tab header';
-    chk.addEventListener('change', async () => {
+    chk.addEventListener('change', () => {
       rule.applyToTab = chk.checked;
-      await this.plugin.saveSettings();
-      this.plugin.updateStyles();
+      this.persist();
     });
   }
 

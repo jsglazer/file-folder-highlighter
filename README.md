@@ -1,4 +1,4 @@
-# Dynamic File & Folder Highlighter
+# Dynamic File and Folder Highlighter
 
 An Obsidian plugin that provides rich and flexible visual highlighting for files and folders in the file explorer (and tab header if desired).
 
@@ -36,7 +36,7 @@ When multiple rules match the same file/folder, later rules win:
 
 ## Version
 
-1.2.5
+1.2.6
 
 ## License
 

@@ -135,6 +135,10 @@
   background: none;
 }
 
+.hh-color-input.hh-hidden {
+  visibility: hidden;
+}
+
 /* Preview chip */
 .hh-preview {
   padding: 2px 10px;
