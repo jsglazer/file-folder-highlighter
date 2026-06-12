@@ -8,12 +8,19 @@
     "allowSyntheticDefaultImports": true,
     "importHelpers": true,
     "jsx": "react",
-    "lib": ["ES6", "DOM"],
+    "lib": [
+      "ES6",
+      "DOM"
+    ],
     "moduleResolution": "node",
     "strict": true,
     "paths": {
-      "obsidian": ["./node_modules/obsidian/obsidian.d.ts"]
+      "obsidian": [
+        "./node_modules/obsidian/obsidian.d.ts"
+      ]
     }
   },
-  "include": ["**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
