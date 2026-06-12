@@ -36,7 +36,7 @@ When multiple rules match the same file/folder, later rules win:
 
 ## Version
 
-1.2.6
+1.2.7
 
 ## License
 
