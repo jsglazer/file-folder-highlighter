@@ -1,5 +1,9 @@
 # Dynamic File and Folder Highlighter
 
+[![CI](https://github.com/jsglazer/dynamic-file-folder-highlighter/actions/workflows/ci.yml/badge.svg)](https://github.com/jsglazer/dynamic-file-folder-highlighter/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/jsglazer/dynamic-file-folder-highlighter/actions/workflows/codeql.yml/badge.svg)](https://github.com/jsglazer/dynamic-file-folder-highlighter/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jsglazer/dynamic-file-folder-highlighter/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jsglazer/dynamic-file-folder-highlighter)
+
 An Obsidian plugin that provides rich and flexible visual highlighting for files and folders in the file explorer (and tab header if desired).
 
 ## Features
