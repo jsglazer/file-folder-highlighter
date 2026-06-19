@@ -9,8 +9,8 @@ import {
 	WorkspaceLeaf,
 	debounce,
 } from 'obsidian';
-import { DynamicFileFolderHighlighterSettings, DEFAULT_SETTINGS } from './settings';
-import { DynamicFileFolderHighlighterSettingTab } from './settingsTab';
+import { FileFolderHighlighterSettings, ThemedColors, migrateSettings } from './settings';
+import { FileFolderHighlighterSettingTab } from './settingsTab';
 
 // Colors are applied to element styles; only accept hex values (which is all
 // the color pickers can produce) so a hand-edited data.json can't inject
@@ -31,8 +31,8 @@ interface MenuItemWithSubmenu {
 	setSubmenu(): Menu;
 }
 
-export default class DynamicFileFolderHighlighterPlugin extends Plugin {
-	settings!: DynamicFileFolderHighlighterSettings;
+export default class FileFolderHighlighterPlugin extends Plugin {
+	settings!: FileFolderHighlighterSettings;
 	private currentHierarchyPaths: Set<string> = new Set();
 
 	// Path → style maps computed by updateStyles(); applyStyles() reads them so
@@ -46,6 +46,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 	private styledEls: Set<HTMLElement> = new Set();
 
 	private explorerObserver: MutationObserver | null = null;
+	private observedContainers: Set<HTMLElement> = new Set();
 
 	private debouncedUpdate = debounce(() => this.updateStyles(), 250, true);
 	// Re-apply (no rule re-evaluation) when the file-explorer DOM changes.
@@ -64,7 +65,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.addSettingTab(new DynamicFileFolderHighlighterSettingTab(this.app, this));
+		this.addSettingTab(new FileFolderHighlighterSettingTab(this.app, this));
 
 		this.addCommand({
 			id: 'toggle-hierarchy-highlighting',
@@ -88,6 +89,11 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => {
 				this.updateHierarchy();
+				this.applyStyles();
+				// Schedule deferred to capture asynchronous view attachment
+				window.setTimeout(() => {
+					this.applyStyles();
+				}, 100);
 			}),
 		);
 
@@ -142,6 +148,11 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 				// and re-apply the cached styles.
 				this.setupExplorerObserver();
 				this.applyStyles();
+				// Schedule deferred to capture asynchronous view attachment
+				window.setTimeout(() => {
+					this.setupExplorerObserver();
+					this.applyStyles();
+				}, 100);
 			}),
 		);
 
@@ -149,7 +160,22 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 			this.updateHierarchy();
 			this.updateStyles();
 			this.setupExplorerObserver();
+			window.setTimeout(() => {
+				this.setupExplorerObserver();
+				this.applyStyles();
+			}, 100);
 		});
+
+		this.registerDomEvent(window, 'focus', () => {
+			this.applyStyles();
+		});
+
+		// Re-evaluate colors when the user switches between light/dark theme.
+		this.registerEvent(
+			this.app.workspace.on('css-change', () => {
+				this.updateStyles();
+			}),
+		);
 	}
 
 	onunload() {
@@ -164,8 +190,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		const data = (await this.loadData()) as Partial<DynamicFileFolderHighlighterSettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
+		this.settings = migrateSettings(await this.loadData());
 	}
 
 	async saveSettings() {
@@ -185,7 +210,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 				menu.addItem((item: MenuItem) => {
 					item
 						.setTitle(`Color: ${combo.name || 'Unnamed'}`)
-						.setSection('dffh-colors')
+						.setSection('ffh-colors')
 						.onClick(async () => {
 							await this.setFileColor(file.path, combo.id);
 						});
@@ -196,7 +221,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 					item
 						.setTitle('Clear color')
 						.setIcon('x-circle')
-						.setSection('dffh-colors')
+						.setSection('ffh-colors')
 						.onClick(async () => {
 							await this.clearFileColor(file.path);
 						});
@@ -206,19 +231,20 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		}
 
 		menu.addItem((item: MenuItem) => {
-			item.setTitle('Ff/Fld Color Options').setSection('dffh-colors');
+			item.setTitle('File/folder color options').setSection('ffh-colors');
 			const submenu = (item as unknown as MenuItemWithSubmenu).setSubmenu();
 
 			this.settings.colorCombos.forEach((combo) => {
 				submenu.addItem((subItem: MenuItem) => {
 					const title = createFragment((frag) => {
 						const span = frag.createSpan({ text: combo.name || 'Unnamed' });
-						if (combo.fontColor || combo.bgColor) {
+						const { font, bg } = this.pickColors(combo);
+						if (font || bg) {
 							span.setCssStyles({
 								padding: '1px 8px',
 								borderRadius: '3px',
-								...(combo.fontColor ? { color: combo.fontColor } : {}),
-								...(combo.bgColor ? { backgroundColor: combo.bgColor } : {}),
+								...(font ? { color: font } : {}),
+								...(bg ? { backgroundColor: bg } : {}),
 							});
 						}
 					});
@@ -272,8 +298,21 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		if (this.settings.hierarchyEnabled) this.debouncedUpdate();
 	}
 
-	updateStyles() {
+	private isDarkTheme(): boolean {
+		return activeDocument.body.classList.contains('theme-dark');
+	}
+
+	/** Resolves a rule's Light/Dark pair down to the colors active for the current theme. */
+	private pickColors(t: ThemedColors): NavStyle {
 		const safe = (c: string) => (SAFE_COLOR.test(c) ? c : '');
+		const dark = this.isDarkTheme();
+		return {
+			font: safe(dark ? t.fontColorDark : t.fontColorLight),
+			bg: safe(dark ? t.bgColorDark : t.bgColorLight),
+		};
+	}
+
+	updateStyles() {
 		const navFile = new Map<string, NavStyle>();
 		const navFolder = new Map<string, NavStyle>();
 		const tabStyles = new Map<string, NavStyle>();
@@ -284,8 +323,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		// 1. Regex rules — lowest priority
 		for (const rule of this.settings.regexRules) {
 			if (!rule.pattern) continue;
-			const font = safe(rule.fontColor),
-				bg = safe(rule.bgColor);
+			const { font, bg } = this.pickColors(rule);
 			if (!font && !bg) continue;
 			let regex: RegExp;
 			try {
@@ -313,21 +351,23 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		// 2. YAML frontmatter rules — files only
 		for (const rule of this.settings.yamlRules) {
 			if (!rule.key || !rule.value) continue;
-			const font = safe(rule.fontColor),
-				bg = safe(rule.bgColor);
+			const { font, bg } = this.pickColors(rule);
 			if (!font && !bg) continue;
 			const target = rule.value.trim();
 			const style: NavStyle = { font, bg };
 			for (const file of files) {
-				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
-					| Record<string, unknown>
-					| undefined;
-				if (!fm) continue;
-				const val = fm[rule.key];
+				const fm: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter;
+				if (!fm || typeof fm !== 'object') continue;
+				const val: unknown = (fm as Record<string, unknown>)[rule.key];
 				if (val === undefined || val === null) continue;
+				const toComparable = (v: unknown): string => {
+					if (typeof v === 'string') return v.trim();
+					if (typeof v === 'number' || typeof v === 'boolean') return String(v).trim();
+					return '';
+				};
 				const matches = Array.isArray(val)
-					? val.some((v) => String(v).trim() === target)
-					: String(val).trim() === target;
+					? val.some((v) => toComparable(v) === target)
+					: toComparable(val) === target;
 				if (matches) navFile.set(file.path, style);
 			}
 		}
@@ -335,8 +375,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		// 3. Conditional rules — select max/min file in matching folders
 		for (const rule of this.settings.conditionalRules) {
 			if (!rule.folderPattern || !rule.filePattern) continue;
-			const font = safe(rule.fontColor),
-				bg = safe(rule.bgColor);
+			const { font, bg } = this.pickColors(rule);
 			if (!font && !bg) continue;
 			let folderRe: RegExp, fileRe: RegExp;
 			try {
@@ -379,8 +418,12 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 
 		// 4. Hierarchy — highlights ancestor folders of the active file
 		if (this.settings.hierarchyEnabled) {
-			const font = safe(this.settings.hierarchyFontColor),
-				bg = safe(this.settings.hierarchyBgColor);
+			const { font, bg } = this.pickColors({
+				fontColorLight: this.settings.hierarchyFontColorLight,
+				bgColorLight: this.settings.hierarchyBgColorLight,
+				fontColorDark: this.settings.hierarchyFontColorDark,
+				bgColorDark: this.settings.hierarchyBgColorDark,
+			});
 			if (font || bg) {
 				const style: NavStyle = { font, bg };
 				for (const path of this.currentHierarchyPaths) navFolder.set(path, style);
@@ -391,14 +434,14 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		for (const entry of this.settings.fileColors) {
 			const combo = this.settings.colorCombos.find((c) => c.id === entry.comboId);
 			if (!combo) continue;
-			const font = safe(combo.fontColor),
-				bg = safe(combo.bgColor);
+			const { font, bg } = this.pickColors(combo);
 			if (!font && !bg) continue;
 			const style: NavStyle = { font, bg };
 			// A path is either a file or a folder; set both, only the matching
 			// element will exist in the explorer DOM.
 			navFile.set(entry.path, style);
 			navFolder.set(entry.path, style);
+			if (combo.applyToTab) tabStyles.set(entry.path, style);
 		}
 
 		this.navFileStyles = navFile;
@@ -412,12 +455,30 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 	}
 
 	private setupExplorerObserver() {
-		this.explorerObserver?.disconnect();
 		const containers = this.getFileExplorerContainers();
+		const currentSet = new Set(containers);
+
+		// Check if the containers are exactly the same as the observed ones
+		let same = currentSet.size === this.observedContainers.size;
+		if (same) {
+			for (const c of containers) {
+				if (!this.observedContainers.has(c)) {
+					same = false;
+					break;
+				}
+			}
+		}
+
+		if (same) return;
+
+		this.explorerObserver?.disconnect();
+		this.observedContainers = currentSet;
+
 		if (containers.length === 0) {
 			this.explorerObserver = null;
 			return;
 		}
+
 		// The explorer rebuilds title nodes on folder expand/collapse and while
 		// virtualizing on scroll, so re-apply inline styles when its DOM changes.
 		// We observe childList only — our own style/class changes are attribute
@@ -429,6 +490,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 	}
 
 	private applyStyles() {
+		this.setupExplorerObserver();
 		this.clearAppliedStyles();
 		this.applyNavStyles();
 		this.applyTabStyles();
@@ -439,7 +501,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		// !important (notably Obsidian's active-tab title color).
 		if (style.font) el.style.setProperty('color', style.font, 'important');
 		if (style.bg) el.style.setProperty('background-color', style.bg, 'important');
-		el.addClass('dffh-styled');
+		el.addClass('ffh-styled');
 		this.styledEls.add(el);
 	}
 
@@ -447,7 +509,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		for (const el of this.styledEls) {
 			el.style.removeProperty('color');
 			el.style.removeProperty('background-color');
-			el.removeClass('dffh-styled');
+			el.removeClass('ffh-styled');
 		}
 		this.styledEls.clear();
 	}
@@ -487,7 +549,7 @@ export default class DynamicFileFolderHighlighterPlugin extends Plugin {
 		});
 	}
 
-	private getAllFolders(): TFolder[] {
+	getAllFolders(): TFolder[] {
 		return this.app.vault
 			.getAllLoadedFiles()
 			.filter((f): f is TFolder => f instanceof TFolder && f.path !== '/' && f.path !== '');
