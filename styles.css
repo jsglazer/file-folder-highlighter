@@ -111,7 +111,7 @@
 }
 
 .hh-color-label {
-  font-size: 10px;
+  font-size: var(--font-ui-small);
   color: var(--text-muted);
   line-height: 1;
   user-select: none;
@@ -153,7 +153,7 @@
 }
 
 .hh-color-sublabel {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
   line-height: 1;
   user-select: none;

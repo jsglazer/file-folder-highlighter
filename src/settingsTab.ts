@@ -33,7 +33,7 @@ export class FileFolderHighlighterSettingTab extends PluginSettingTab {
 		// ── Color Combinations ────────────────────────────────────────────────────
 		new Setting(containerEl).setName('Color combinations').setHeading();
 		containerEl.createEl('p', {
-			text: 'Named color combinations you can assign to files and folders via right-click. Leave font or background unset to keep the Obsidian default. Each color has separate light (☀) and dark (🌙) theme variants.',
+			text: 'Named color combinations you can assign to files and folders via right-click. Leave font or background unset to keep the Obsidian default. Each color has separate light and dark theme variants.',
 			cls: 'setting-item-description',
 		});
 
@@ -77,11 +77,11 @@ export class FileFolderHighlighterSettingTab extends PluginSettingTab {
 			.setName('Font color')
 			.setDesc('Leave unset to use the Obsidian default.');
 		const hierFontPair = hierFontRow.controlEl.createDiv('hh-color-pair');
-		this.addColorSwatch(hierFontPair, '☀', this.plugin.settings.hierarchyFontColorLight, (v) => {
+		this.addColorSwatch(hierFontPair, 'Light', this.plugin.settings.hierarchyFontColorLight, (v) => {
 			this.plugin.settings.hierarchyFontColorLight = v;
 			this.plugin.scheduleSaveAndUpdate();
 		});
-		this.addColorSwatch(hierFontPair, '🌙', this.plugin.settings.hierarchyFontColorDark, (v) => {
+		this.addColorSwatch(hierFontPair, 'Dark', this.plugin.settings.hierarchyFontColorDark, (v) => {
 			this.plugin.settings.hierarchyFontColorDark = v;
 			this.plugin.scheduleSaveAndUpdate();
 		});
@@ -90,11 +90,11 @@ export class FileFolderHighlighterSettingTab extends PluginSettingTab {
 			.setName('Background color')
 			.setDesc('Leave unset to use the Obsidian default.');
 		const hierBgPair = hierBgRow.controlEl.createDiv('hh-color-pair');
-		this.addColorSwatch(hierBgPair, '☀', this.plugin.settings.hierarchyBgColorLight, (v) => {
+		this.addColorSwatch(hierBgPair, 'Light', this.plugin.settings.hierarchyBgColorLight, (v) => {
 			this.plugin.settings.hierarchyBgColorLight = v;
 			this.plugin.scheduleSaveAndUpdate();
 		});
-		this.addColorSwatch(hierBgPair, '🌙', this.plugin.settings.hierarchyBgColorDark, (v) => {
+		this.addColorSwatch(hierBgPair, 'Dark', this.plugin.settings.hierarchyBgColorDark, (v) => {
 			this.plugin.settings.hierarchyBgColorDark = v;
 			this.plugin.scheduleSaveAndUpdate();
 		});
@@ -650,8 +650,8 @@ export class FileFolderHighlighterSettingTab extends PluginSettingTab {
 		const pair = wrap.createDiv('hh-color-pair');
 		const lightKey = prefix === 'font' ? 'fontColorLight' : 'bgColorLight';
 		const darkKey = prefix === 'font' ? 'fontColorDark' : 'bgColorDark';
-		this.addColorSwatch(pair, '☀', entry[lightKey], onLightChange);
-		this.addColorSwatch(pair, '🌙', entry[darkKey], onDarkChange);
+		this.addColorSwatch(pair, 'Light', entry[lightKey], onLightChange);
+		this.addColorSwatch(pair, 'Dark', entry[darkKey], onDarkChange);
 	}
 
 	private addColorSwatch(

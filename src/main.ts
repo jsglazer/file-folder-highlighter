@@ -34,6 +34,7 @@ interface MenuItemWithSubmenu {
 export default class FileFolderHighlighterPlugin extends Plugin {
 	settings!: FileFolderHighlighterSettings;
 	private currentHierarchyPaths: Set<string> = new Set();
+	private currentActiveFilePath: string = '';
 
 	// Path → style maps computed by updateStyles(); applyStyles() reads them so
 	// re-applying after a DOM rebuild never has to re-evaluate the rules.
@@ -286,8 +287,10 @@ export default class FileFolderHighlighterPlugin extends Plugin {
 
 	private updateHierarchy() {
 		this.currentHierarchyPaths = new Set();
+		this.currentActiveFilePath = '';
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile) {
+			this.currentActiveFilePath = activeFile.path;
 			const parts = activeFile.path.split('/');
 			for (let i = 1; i < parts.length; i++) {
 				this.currentHierarchyPaths.add(parts.slice(0, i).join('/'));
@@ -416,7 +419,7 @@ export default class FileFolderHighlighterPlugin extends Plugin {
 			}
 		}
 
-		// 4. Hierarchy — highlights ancestor folders of the active file
+		// 4. Hierarchy — highlights the active file and its ancestor folders
 		if (this.settings.hierarchyEnabled) {
 			const { font, bg } = this.pickColors({
 				fontColorLight: this.settings.hierarchyFontColorLight,
@@ -427,6 +430,7 @@ export default class FileFolderHighlighterPlugin extends Plugin {
 			if (font || bg) {
 				const style: NavStyle = { font, bg };
 				for (const path of this.currentHierarchyPaths) navFolder.set(path, style);
+				if (this.currentActiveFilePath) navFile.set(this.currentActiveFilePath, style);
 			}
 		}
 
